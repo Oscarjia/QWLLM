@@ -9764,4 +9764,4658 @@ GPU之所以成为深度学习的加速器，源于其独特的并行架构：
 
 下一章，我们将学习自动微分——让梯度计算变得简单的魔法。
 
+### 第11章：自动微分——让梯度计算变得简单
+
+#### 🎯 本章导读
+
+还记得高中时代，老师让你求导数吗？
+
+$f(x) = x^2 + 3x + 2$，求 $f'(x)$。
+
+你会机械地应用规则：$f'(x) = 2x + 3$。
+
+但如果是这样的函数呢？
+$f(x) = \sin(x^2) \cdot e^{-x} + \log(1 + x^3)$
+
+手算？太复杂了！如果是一个有百万参数的神经网络呢？根本不可能！
+
+这就是**自动微分（Automatic Differentiation）**的魔力——让计算机自动帮你算梯度，而且快速、准确、高效。它是深度学习框架的核心技术，让我们能够训练各种复杂的神经网络。
+
+#### 🎨 梯度计算的三种方法
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, FancyBboxPatch, Circle, FancyArrowPatch
+import networkx as nx
+
+def 梯度计算方法对比():
+    """展示三种计算梯度的方法"""
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+    
+    # 1. 数值微分（有限差分）
+    ax1.set_title('数值微分（Numerical）', fontsize=14, weight='bold')
+    ax1.set_xlim(-1, 5)
+    ax1.set_ylim(-1, 5)
+    
+    # 画函数曲线
+    x = np.linspace(0, 4, 100)
+    y = x**2
+    ax1.plot(x, y, 'b-', linewidth=2, label='f(x) = x²')
+    
+    # 画切线近似
+    x0 = 2
+    h = 0.5
+    y0 = x0**2
+    y1 = (x0 + h)**2
+    
+    ax1.plot(x0, y0, 'ro', markersize=10)
+    ax1.plot(x0 + h, y1, 'go', markersize=10)
+    ax1.plot([x0, x0 + h], [y0, y1], 'r--', linewidth=2)
+    
+    # 标注
+    ax1.annotate(f'f(x)', xy=(x0, y0), xytext=(x0-0.5, y0+0.5),
+                arrowprops=dict(arrowstyle='->', color='red'))
+    ax1.annotate(f'f(x+h)', xy=(x0+h, y1), xytext=(x0+h+0.3, y1+0.5),
+                arrowprops=dict(arrowstyle='->', color='green'))
+    
+    ax1.text(2, 0.5, r"$f'(x) \approx \frac{f(x+h) - f(x)}{h}$", 
+            fontsize=12, bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+    
+    # 优缺点
+    ax1.text(0.5, 4.5, '优点：简单直观\n缺点：精度低，计算慢', 
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.5))
+    
+    # 2. 符号微分
+    ax2.set_title('符号微分（Symbolic）', fontsize=14, weight='bold')
+    ax2.set_xlim(0, 10)
+    ax2.set_ylim(0, 10)
+    ax2.axis('off')
+    
+    # 画符号推导过程
+    expressions = [
+        (5, 8, r'$f(x) = x^2 \sin(x)$'),
+        (5, 6.5, r'$\downarrow$ 应用乘法法则'),
+        (5, 5, r"$f'(x) = 2x\sin(x) + x^2\cos(x)$"),
+        (5, 3.5, r'$\downarrow$ 化简'),
+        (5, 2, r"$f'(x) = x(2\sin(x) + x\cos(x))$")
+    ]
+    
+    for x, y, text in expressions:
+        ax2.text(x, y, text, ha='center', va='center', fontsize=12,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='lightblue', alpha=0.7))
+    
+    # 优缺点
+    ax2.text(5, 0.5, '优点：精确\n缺点：表达式膨胀，实现复杂', 
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightyellow', alpha=0.5))
+    
+    # 3. 自动微分
+    ax3.set_title('自动微分（Automatic）', fontsize=14, weight='bold')
+    ax3.set_xlim(0, 10)
+    ax3.set_ylim(0, 10)
+    ax3.axis('off')
+    
+    # 画计算图
+    nodes = {
+        'x': (2, 5),
+        'sin': (4, 7),
+        'x²': (4, 3),
+        '*': (6, 5),
+        'f': (8, 5)
+    }
+    
+    # 画节点
+    for node, (x, y) in nodes.items():
+        if node in ['x', 'f']:
+            color = 'lightgreen' if node == 'x' else 'lightcoral'
+        else:
+            color = 'lightblue'
+        
+        circle = Circle((x, y), 0.4, facecolor=color, edgecolor='black', linewidth=2)
+        ax3.add_patch(circle)
+        ax3.text(x, y, node, ha='center', va='center', fontsize=10, weight='bold')
+    
+    # 画边
+    edges = [('x', 'sin'), ('x', 'x²'), ('sin', '*'), ('x²', '*'), ('*', 'f')]
+    for start, end in edges:
+        x1, y1 = nodes[start]
+        x2, y2 = nodes[end]
+        arrow = FancyArrowPatch((x1, y1), (x2, y2),
+                               connectionstyle="arc3,rad=0.2",
+                               arrowstyle='->', mutation_scale=20,
+                               color='black', linewidth=2)
+        ax3.add_patch(arrow)
+    
+    # 梯度标注
+    ax3.text(6, 2, '前向传播 →\n← 反向传播', ha='center', fontsize=11,
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 优缺点
+    ax3.text(5, 0.5, '优点：精确、高效、易实现\n缺点：需要存储中间结果', 
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🔍 三种方法对比：")
+    print("1. 数值微分：适合验证，不适合实际训练")
+    print("2. 符号微分：适合简单函数，不适合复杂网络")
+    print("3. 自动微分：深度学习的标准方法")
+
+梯度计算方法对比()
+```
+
+#### 🌲 计算图：自动微分的基础
+
+```python
+def 计算图详解():
+    """展示计算图的构建和梯度传播"""
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+    
+    # 左图：前向传播
+    ax1.set_title('前向传播：构建计算图', fontsize=14, weight='bold')
+    ax1.set_xlim(0, 10)
+    ax1.set_ylim(0, 10)
+    ax1.axis('off')
+    
+    # 定义一个简单的计算：z = (x + y) * w
+    nodes_forward = {
+        'x=2': (1, 7, 'lightgreen'),
+        'y=3': (1, 3, 'lightgreen'),
+        'w=4': (1, 5, 'lightgreen'),
+        '+': (4, 5, 'lightblue'),
+        'a=5': (4, 5, 'lightyellow'),
+        '*': (7, 5, 'lightblue'),
+        'z=20': (9, 5, 'lightcoral')
+    }
+    
+    # 画节点
+    for node, (x, y, color) in nodes_forward.items():
+        if '=' in node:
+            # 变量节点
+            rect = FancyBboxPatch((x-0.5, y-0.3), 1, 0.6,
+                                 boxstyle="round,pad=0.1",
+                                 facecolor=color, edgecolor='black', linewidth=2)
+            ax1.add_patch(rect)
+            ax1.text(x, y, node, ha='center', va='center', fontsize=10)
+        else:
+            # 操作节点
+            circle = Circle((x, y), 0.4, facecolor=color, 
+                          edgecolor='black', linewidth=2)
+            ax1.add_patch(circle)
+            ax1.text(x, y, node, ha='center', va='center', 
+                    fontsize=12, weight='bold')
+    
+    # 画边和值
+    edges_forward = [
+        ('x=2', '+', '2'),
+        ('y=3', '+', '3'),
+        ('+', 'a=5', '5'),
+        ('a=5', '*', '5'),
+        ('w=4', '*', '4'),
+        ('*', 'z=20', '20')
+    ]
+    
+    # 简化边的绘制
+    node_positions = {
+        'x=2': (1, 7), 'y=3': (1, 3), 'w=4': (1, 5),
+        '+': (4, 5), 'a=5': (4, 5), '*': (7, 5), 'z=20': (9, 5)
+    }
+    
+    for start, end, value in edges_forward:
+        if start in node_positions and end in node_positions:
+            x1, y1 = node_positions[start]
+            x2, y2 = node_positions[end]
+            
+            # 特殊处理a=5的位置
+            if start == 'a=5':
+                x1 = 4.5
+            if end == 'a=5':
+                x2 = 3.5
+                
+            arrow = FancyArrowPatch((x1, y1), (x2, y2),
+                                   connectionstyle="arc3,rad=0.1",
+                                   arrowstyle='->', mutation_scale=15,
+                                   color='blue', linewidth=2)
+            ax1.add_patch(arrow)
+            
+            # 标注传递的值
+            mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
+            ax1.text(mid_x, mid_y + 0.3, value, ha='center', 
+                    fontsize=9, color='blue')
+    
+    # 右图：反向传播
+    ax2.set_title('反向传播：计算梯度', fontsize=14, weight='bold')
+    ax2.set_xlim(0, 10)
+    ax2.set_ylim(0, 10)
+    ax2.axis('off')
+    
+    # 画相同的节点结构
+    for node, (x, y, color) in nodes_forward.items():
+        if '=' in node:
+            rect = FancyBboxPatch((x-0.5, y-0.3), 1, 0.6,
+                                 boxstyle="round,pad=0.1",
+                                 facecolor=color, edgecolor='black', linewidth=2)
+            ax2.add_patch(rect)
+            ax2.text(x, y, node.split('=')[0], ha='center', va='center', fontsize=10)
+        else:
+            circle = Circle((x, y), 0.4, facecolor=color, 
+                          edgecolor='black', linewidth=2)
+            ax2.add_patch(circle)
+            ax2.text(x, y, node, ha='center', va='center', 
+                    fontsize=12, weight='bold')
+    
+    # 画反向传播的梯度
+    gradients = [
+        ('z=20', '*', '∂L/∂z=1'),
+        ('*', 'a=5', '∂L/∂a=4'),
+        ('*', 'w=4', '∂L/∂w=5'),
+        ('a=5', '+', '∂L/∂a=4'),
+        ('+', 'x=2', '∂L/∂x=4'),
+        ('+', 'y=3', '∂L/∂y=4')
+    ]
+    
+    for start, end, grad in gradients:
+        if start in node_positions and end in node_positions:
+            x1, y1 = node_positions[start]
+            x2, y2 = node_positions[end]
+            
+            # 特殊处理a=5的位置
+            if start == 'a=5':
+                x1 = 3.5
+            if end == 'a=5':
+                x2 = 4.5
+                
+            arrow = FancyArrowPatch((x1, y1), (x2, y2),
+                                   connectionstyle="arc3,rad=-0.1",
+                                   arrowstyle='->', mutation_scale=15,
+                                   color='red', linewidth=2)
+            ax2.add_patch(arrow)
+            
+            # 标注梯度
+            mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
+            ax2.text(mid_x, mid_y - 0.5, grad, ha='center', 
+                    fontsize=8, color='red')
+    
+    # 添加链式法则说明
+    ax2.text(5, 1, '链式法则：\n∂L/∂x = ∂L/∂z × ∂z/∂a × ∂a/∂x\n= 1 × 4 × 1 = 4',
+            ha='center', fontsize=10,
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("📊 计算图的核心概念：")
+    print("1. 前向传播：按照计算顺序构建图，保存中间结果")
+    print("2. 反向传播：从输出开始，逐层计算梯度")
+    print("3. 链式法则：梯度 = 局部梯度 × 上游梯度")
+
+计算图详解()
+```
+
+#### 🔧 自动微分的实现
+
+```python
+class 简单自动微分系统:
+    """实现一个简单的自动微分系统"""
+    
+    def __init__(self):
+        print("🛠️ 实现一个玩具版自动微分系统")
+        
+    class Tensor:
+        """支持自动微分的张量类"""
+        def __init__(self, data, requires_grad=False, grad_fn=None):
+            self.data = np.array(data, dtype=np.float32)
+            self.requires_grad = requires_grad
+            self.grad = None
+            self.grad_fn = grad_fn  # 记录创建这个张量的操作
+            
+            if requires_grad:
+                self.grad = np.zeros_like(self.data)
+        
+        def __repr__(self):
+            return f"Tensor({self.data}, grad={self.grad})"
+        
+        def backward(self, grad=None):
+            """反向传播"""
+            if not self.requires_grad:
+                return
+                
+            # 如果是标量且没有提供梯度，默认为1
+            if grad is None:
+                if self.data.size == 1:
+                    grad = np.ones_like(self.data)
+                else:
+                    raise RuntimeError("需要指定梯度")
+            
+            # 累积梯度
+            self.grad += grad
+            
+            # 如果有grad_fn，继续反向传播
+            if self.grad_fn is not None:
+                self.grad_fn.backward(grad)
+        
+        # 重载运算符
+        def __add__(self, other):
+            return AddBackward.apply(self, other)
+        
+        def __mul__(self, other):
+            return MulBackward.apply(self, other)
+        
+        def __pow__(self, power):
+            return PowBackward.apply(self, power)
+    
+    class Function:
+        """自动微分函数的基类"""
+        @staticmethod
+        def forward(*args):
+            raise NotImplementedError
+        
+        @staticmethod
+        def backward(*args):
+            raise NotImplementedError
+    
+    class AddBackward:
+        """加法的反向传播"""
+        def __init__(self, x, y):
+            self.x = x
+            self.y = y
+        
+        @classmethod
+        def apply(cls, x, y):
+            # 前向传播
+            z_data = x.data + y.data
+            
+            # 创建结果张量
+            requires_grad = x.requires_grad or y.requires_grad
+            if requires_grad:
+                grad_fn = cls(x, y)
+            else:
+                grad_fn = None
+                
+            z = 简单自动微分系统.Tensor(z_data, requires_grad, grad_fn)
+            return z
+        
+        def backward(self, grad):
+            # 加法的导数都是1
+            if self.x.requires_grad:
+                self.x.backward(grad * 1)
+            if self.y.requires_grad:
+                self.y.backward(grad * 1)
+    
+    class MulBackward:
+        """乘法的反向传播"""
+        def __init__(self, x, y):
+            self.x = x
+            self.y = y
+        
+        @classmethod
+        def apply(cls, x, y):
+            z_data = x.data * y.data
+            
+            requires_grad = x.requires_grad or y.requires_grad
+            if requires_grad:
+                grad_fn = cls(x, y)
+            else:
+                grad_fn = None
+                
+            z = 简单自动微分系统.Tensor(z_data, requires_grad, grad_fn)
+            return z
+        
+        def backward(self, grad):
+            # 乘法的导数：d(xy)/dx = y, d(xy)/dy = x
+            if self.x.requires_grad:
+                self.x.backward(grad * self.y.data)
+            if self.y.requires_grad:
+                self.y.backward(grad * self.x.data)
+    
+    class PowBackward:
+        """幂运算的反向传播"""
+        def __init__(self, x, power):
+            self.x = x
+            self.power = power
+        
+        @classmethod
+        def apply(cls, x, power):
+            z_data = x.data ** power
+            
+            if x.requires_grad:
+                grad_fn = cls(x, power)
+            else:
+                grad_fn = None
+                
+            z = 简单自动微分系统.Tensor(z_data, x.requires_grad, grad_fn)
+            return z
+        
+        def backward(self, grad):
+            # 幂运算的导数：d(x^n)/dx = n * x^(n-1)
+            if self.x.requires_grad:
+                grad_x = grad * self.power * (self.x.data ** (self.power - 1))
+                self.x.backward(grad_x)
+    
+    def 演示自动微分(self):
+        """演示自动微分的使用"""
+        print("\n📝 示例1：简单函数 z = x² + 2xy + y²")
+        
+        # 创建变量
+        x = self.Tensor(2.0, requires_grad=True)
+        y = self.Tensor(3.0, requires_grad=True)
+        
+        # 前向传播
+        z = x**2 + x*y*2 + y**2
+        print(f"前向结果: z = {z.data}")
+        
+        # 反向传播
+        z.backward()
+        print(f"梯度: ∂z/∂x = {x.grad}, ∂z/∂y = {y.grad}")
+        
+        # 验证梯度
+        # z = x² + 2xy + y²
+        # ∂z/∂x = 2x + 2y = 2*2 + 2*3 = 10
+        # ∂z/∂y = 2x + 2y = 2*2 + 2*3 = 10
+        print(f"理论梯度: ∂z/∂x = {2*x.data + 2*y.data}, ∂z/∂y = {2*x.data + 2*y.data}")
+        
+        # 可视化计算图
+        self.可视化计算图()
+    
+    def 可视化计算图(self):
+        """可视化计算图结构"""
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.set_title('自动构建的计算图', fontsize=14, weight='bold')
+        
+        # 使用networkx创建有向图
+        G = nx.DiGraph()
+        
+        # 添加节点
+        nodes = [
+            ('x', {'pos': (1, 4), 'color': 'lightgreen'}),
+            ('y', {'pos': (1, 2), 'color': 'lightgreen'}),
+            ('x²', {'pos': (3, 4), 'color': 'lightblue'}),
+            ('xy', {'pos': (3, 3), 'color': 'lightblue'}),
+            ('2xy', {'pos': (5, 3), 'color': 'lightblue'}),
+            ('y²', {'pos': (3, 2), 'color': 'lightblue'}),
+            ('+1', {'pos': (7, 3.5), 'color': 'lightblue'}),
+            ('+2', {'pos': (7, 2.5), 'color': 'lightblue'}),
+            ('z', {'pos': (9, 3), 'color': 'lightcoral'})
+        ]
+        
+        for node, attrs in nodes:
+            G.add_node(node, **attrs)
+        
+        # 添加边
+        edges = [
+            ('x', 'x²'), ('x', 'xy'), ('y', 'xy'), ('y', 'y²'),
+            ('xy', '2xy'), ('x²', '+1'), ('2xy', '+1'),
+            ('+1', '+2'), ('y²', '+2'), ('+2', 'z')
+        ]
+        G.add_edges_from(edges)
+        
+        # 获取位置
+        pos = nx.get_node_attributes(G, 'pos')
+        colors = [G.nodes[node]['color'] for node in G.nodes()]
+        
+        # 绘制图
+        nx.draw(G, pos, ax=ax, with_labels=True, node_color=colors,
+                node_size=1000, font_size=10, font_weight='bold',
+                arrows=True, arrowsize=20, edge_color='gray',
+                arrowstyle='->', linewidths=2)
+        
+        # 添加梯度流标注
+        ax.text(5, 1, '前向传播 →', fontsize=12, color='blue', weight='bold')
+        ax.text(5, 0.5, '← 反向传播', fontsize=12, color='red', weight='bold')
+        
+        plt.tight_layout()
+        plt.show()
+
+# 运行演示
+autograd = 简单自动微分系统()
+autograd.演示自动微分()
+```
+
+#### 🚀 框架中的自动微分
+
+```python
+def 框架自动微分对比():
+    """对比不同框架的自动微分实现"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # PyTorch风格
+    ax1.set_title('PyTorch风格：动态计算图', fontsize=14, weight='bold')
+    ax1.text(0.5, 0.9, 'PyTorch 示例代码:', transform=ax1.transAxes, 
+            fontsize=12, weight='bold')
+    
+    code_pytorch = '''import torch
+
+x = torch.tensor(2.0, requires_grad=True)
+y = torch.tensor(3.0, requires_grad=True)
+
+# 动态构建计算图
+z = x**2 + 2*x*y + y**2
+
+# 反向传播
+z.backward()
+
+print(f"∂z/∂x = {x.grad}")
+print(f"∂z/∂y = {y.grad}")'''
+    
+    ax1.text(0.05, 0.05, code_pytorch, transform=ax1.transAxes,
+            fontsize=9, family='monospace',
+            bbox=dict(boxstyle="round", facecolor='lightblue', alpha=0.7))
+    
+    ax1.text(0.5, 0.35, '特点：\n• 灵活，易调试\n• 支持动态控制流\n• Python原生',
+            transform=ax1.transAxes, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    ax1.axis('off')
+    
+    # TensorFlow风格
+    ax2.set_title('TensorFlow风格：静态计算图', fontsize=14, weight='bold')
+    ax2.text(0.5, 0.9, 'TensorFlow 1.x 示例代码:', transform=ax2.transAxes,
+            fontsize=12, weight='bold')
+    
+    code_tf = '''import tensorflow as tf
+
+# 定义计算图
+x = tf.placeholder(tf.float32)
+y = tf.placeholder(tf.float32)
+z = x**2 + 2*x*y + y**2
+
+# 计算梯度
+grad_x = tf.gradients(z, x)
+grad_y = tf.gradients(z, y)
+
+# 运行会话
+with tf.Session() as sess:
+    gx, gy = sess.run([grad_x, grad_y], 
+                      feed_dict={x: 2.0, y: 3.0})'''
+    
+    ax2.text(0.05, 0.05, code_tf, transform=ax2.transAxes,
+            fontsize=9, family='monospace',
+            bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.7))
+    
+    ax2.text(0.5, 0.35, '特点：\n• 优化机会多\n• 部署友好\n• 需要编译步骤',
+            transform=ax2.transAxes, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightyellow', alpha=0.5))
+    ax2.axis('off')
+    
+    # JAX风格
+    ax3.set_title('JAX风格：函数式自动微分', fontsize=14, weight='bold')
+    ax3.text(0.5, 0.9, 'JAX 示例代码:', transform=ax3.transAxes,
+            fontsize=12, weight='bold')
+    
+    code_jax = '''import jax
+import jax.numpy as jnp
+
+def f(x, y):
+    return x**2 + 2*x*y + y**2
+
+# 自动获取梯度函数
+grad_f = jax.grad(f, argnums=(0, 1))
+
+# 计算梯度
+grad_x, grad_y = grad_f(2.0, 3.0)
+
+# JIT编译加速
+fast_grad_f = jax.jit(grad_f)'''
+    
+    ax3.text(0.05, 0.05, code_jax, transform=ax3.transAxes,
+            fontsize=9, family='monospace',
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.7))
+    
+    ax3.text(0.5, 0.35, '特点：\n• 函数式编程\n• JIT编译\n• 易于组合变换',
+            transform=ax3.transAxes, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightblue', alpha=0.5))
+    ax3.axis('off')
+    
+    # 性能对比
+    ax4.set_title('不同场景下的性能对比', fontsize=14, weight='bold')
+    
+    scenarios = ['小模型\n训练', '大模型\n训练', '动态\n模型', '部署\n推理']
+    pytorch_scores = [9, 8, 10, 6]
+    tf_scores = [7, 9, 5, 10]
+    jax_scores = [8, 10, 7, 8]
+    
+    x = np.arange(len(scenarios))
+    width = 0.25
+    
+    bars1 = ax4.bar(x - width, pytorch_scores, width, label='PyTorch',
+                     color='#EE4C2C', alpha=0.7)
+    bars2 = ax4.bar(x, tf_scores, width, label='TensorFlow',
+                     color='#FF6F00', alpha=0.7)
+    bars3 = ax4.bar(x + width, jax_scores, width, label='JAX',
+                     color='#00897B', alpha=0.7)
+    
+    ax4.set_ylabel('性能评分')
+    ax4.set_xticks(x)
+    ax4.set_xticklabels(scenarios)
+    ax4.legend()
+    ax4.grid(True, alpha=0.3, axis='y')
+    ax4.set_ylim(0, 11)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🎯 框架选择建议：")
+    print("1. PyTorch：研究和原型开发首选")
+    print("2. TensorFlow：生产部署的成熟选择")
+    print("3. JAX：高性能科学计算")
+
+框架自动微分对比()
+```
+
+#### 🐛 常见陷阱与优化
+
+```python
+def 自动微分陷阱():
+    """展示自动微分的常见陷阱和优化技巧"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 陷阱1：梯度累积
+    ax1.set_title('陷阱1：梯度累积', fontsize=14, weight='bold')
+    ax1.text(0.5, 0.85, '❌ 错误示例', transform=ax1.transAxes,
+            fontsize=12, weight='bold', color='red', ha='center')
+    
+    wrong_code = '''# 梯度会累积！
+for epoch in range(3):
+    loss = model(x)
+    loss.backward()
+    # x.grad: [1, 2, 3] 累积!'''
+    
+    ax1.text(0.05, 0.55, wrong_code, transform=ax1.transAxes,
+            fontsize=10, family='monospace',
+            bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.7))
+    
+    ax1.text(0.5, 0.35, '✅ 正确做法', transform=ax1.transAxes,
+            fontsize=12, weight='bold', color='green', ha='center')
+    
+    right_code = '''# 每次清零梯度
+for epoch in range(3):
+    optimizer.zero_grad()  # 清零！
+    loss = model(x)
+    loss.backward()'''
+    
+    ax1.text(0.05, 0.05, right_code, transform=ax1.transAxes,
+            fontsize=10, family='monospace',
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.7))
+    ax1.axis('off')
+    
+    # 陷阱2：原地操作
+    ax2.set_title('陷阱2：原地操作破坏计算图', fontsize=14, weight='bold')
+    ax2.text(0.5, 0.85, '❌ 错误示例', transform=ax2.transAxes,
+            fontsize=12, weight='bold', color='red', ha='center')
+    
+    inplace_wrong = '''# 原地操作会破坏计算图
+x = torch.tensor([1., 2.], requires_grad=True)
+y = x * 2
+x[0] = 3  # 错误！破坏了计算图
+z = y.sum()
+z.backward()  # RuntimeError!'''
+    
+    ax2.text(0.05, 0.5, inplace_wrong, transform=ax2.transAxes,
+            fontsize=9, family='monospace',
+            bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.7))
+    
+    ax2.text(0.5, 0.3, '✅ 使用.data或.detach()', transform=ax2.transAxes,
+            fontsize=12, weight='bold', color='green', ha='center')
+    ax2.axis('off')
+    
+    # 陷阱3：梯度消失/爆炸
+    ax3.set_title('陷阱3：梯度消失/爆炸', fontsize=14, weight='bold')
+    
+    # 模拟梯度在深度网络中的传播
+    depths = np.arange(1, 21)
+    gradient_vanish = 0.5 ** depths  # 每层梯度缩小一半
+    gradient_explode = 1.5 ** depths  # 每层梯度放大1.5倍
+    
+    ax3.semilogy(depths, gradient_vanish, 'b-o', label='梯度消失 (×0.5)', 
+                 markersize=6)
+    ax3.semilogy(depths, gradient_explode, 'r-o', label='梯度爆炸 (×1.5)', 
+                 markersize=6)
+    ax3.axhline(y=1, color='green', linestyle='--', label='理想梯度')
+    
+    ax3.fill_between(depths, 0.1, 10, alpha=0.2, color='green', label='健康范围')
+    
+    ax3.set_xlabel('网络深度（层数）')
+    ax3.set_ylabel('梯度大小（对数尺度）')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    # 优化技巧
+    ax4.set_title('优化技巧：检查点（Checkpointing）', fontsize=14, weight='bold')
+    ax4.set_xlim(0, 10)
+    ax4.set_ylim(0, 10)
+    ax4.axis('off')
+    
+    # 画内存使用对比
+    # 普通方式
+    ax4.text(2.5, 8, '普通反向传播', ha='center', fontsize=12, weight='bold')
+    for i in range(5):
+        rect = Rectangle((0.5 + i*0.8, 6), 0.7, 1, 
+                        facecolor='lightcoral', edgecolor='black')
+        ax4.add_patch(rect)
+        ax4.text(0.85 + i*0.8, 6.5, f'L{i+1}', ha='center', fontsize=9)
+    ax4.text(2.5, 5.5, '内存：O(n)', ha='center', fontsize=10, color='red')
+    
+    # Checkpointing方式
+    ax4.text(2.5, 4, 'Gradient Checkpointing', ha='center', fontsize=12, weight='bold')
+    for i in range(5):
+        if i % 2 == 0:  # 只保存部分层
+            color = 'lightgreen'
+        else:
+            color = 'lightgray'
+        rect = Rectangle((0.5 + i*0.8, 2), 0.7, 1,
+                        facecolor=color, edgecolor='black')
+        ax4.add_patch(rect)
+        ax4.text(0.85 + i*0.8, 2.5, f'L{i+1}', ha='center', fontsize=9)
+    ax4.text(2.5, 1.5, '内存：O(√n)', ha='center', fontsize=10, color='green')
+    
+    # 说明
+    ax4.text(7, 6, '• 存储所有激活值\n• 内存占用大\n• 速度快',
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.5))
+    ax4.text(7, 2, '• 只存储部分激活值\n• 需要时重新计算\n• 省内存，慢一点',
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("⚠️ 自动微分注意事项：")
+    print("1. 记得清零梯度（zero_grad）")
+    print("2. 避免原地操作")
+    print("3. 监控梯度大小，防止消失/爆炸")
+    print("4. 大模型使用gradient checkpointing节省内存")
+
+自动微分陷阱()
+```
+
+#### 🎯 高级话题：高阶导数和向量化
+
+```python
+def 高级自动微分():
+    """展示自动微分的高级特性"""
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+    
+    # 高阶导数
+    ax1.set_title('高阶导数：Hessian矩阵', fontsize=14, weight='bold')
+    ax1.set_xlim(-3, 3)
+    ax1.set_ylim(-3, 3)
+    
+    # 画一个二维函数的等高线
+    x = np.linspace(-3, 3, 100)
+    y = np.linspace(-3, 3, 100)
+    X, Y = np.meshgrid(x, y)
+    Z = X**2 + Y**2 + 0.5*X*Y  # 简单的二次函数
+    
+    contour = ax1.contour(X, Y, Z, levels=20, cmap='viridis')
+    ax1.clabel(contour, inline=True, fontsize=8)
+    
+    # 在某点计算Hessian
+    x0, y0 = 1.0, 0.5
+    ax1.plot(x0, y0, 'ro', markersize=10)
+    
+    # Hessian矩阵
+    H = np.array([[2, 0.5], [0.5, 2]])  # 对于这个函数是常数
+    
+    # 画Hessian的特征向量
+    eigenvalues, eigenvectors = np.linalg.eig(H)
+    for i in range(2):
+        vec = eigenvectors[:, i]
+        scale = 1.0 / np.sqrt(eigenvalues[i])
+        ax1.arrow(x0, y0, vec[0]*scale, vec[1]*scale,
+                 head_width=0.1, head_length=0.1, 
+                 fc='red', ec='red', linewidth=2)
+    
+    ax1.set_xlabel('x')
+    ax1.set_ylabel('y')
+    ax1.grid(True, alpha=0.3)
+    
+    # 添加Hessian信息
+    ax1.text(-2, 2.5, f'Hessian at ({x0}, {y0}):\n' + 
+                      f'H = [{H[0,0]:.1f}  {H[0,1]:.1f}]\n' +
+                      f'    [{H[1,0]:.1f}  {H[1,1]:.1f}]',
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 向量化梯度计算
+    ax2.set_title('向量化：批量梯度计算', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    # 示例代码
+    vectorized_code = '''# 向量化梯度计算
+import torch
+from torch.func import vmap, grad
+
+def loss_fn(params, x, y):
+    """单个样本的损失"""
+    return ((params @ x - y) ** 2).sum()
+
+# 批量数据
+batch_size = 1000
+params = torch.randn(10, 5, requires_grad=True)
+X = torch.randn(batch_size, 5)
+Y = torch.randn(batch_size, 10)
+
+# 方法1：循环计算（慢）
+grads_loop = []
+for i in range(batch_size):
+    g = grad(loss_fn)(params, X[i], Y[i])
+    grads_loop.append(g)
+
+# 方法2：向量化计算（快）
+grad_fn = vmap(grad(loss_fn), in_dims=(None, 0, 0))
+grads_vmap = grad_fn(params, X, Y)
+
+# 速度提升：10-100倍！'''
+    
+    ax2.text(0.05, 0.5, vectorized_code, transform=ax2.transAxes,
+            fontsize=10, family='monospace', va='center',
+            bbox=dict(boxstyle="round", facecolor='lightblue', alpha=0.7))
+    
+    # 性能对比
+    ax2.text(0.5, 0.15, '性能对比：\n循环: O(n) 顺序执行\nvmap: O(1) 并行执行',
+            transform=ax2.transAxes, ha='center', fontsize=12,
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🚀 高级特性：")
+    print("1. 高阶导数：优化算法（牛顿法）需要")
+    print("2. 向量化梯度：大幅提升批处理效率")
+    print("3. 混合精度：自动处理float16/32转换")
+
+高级自动微分()
+```
+
+#### 🎓 本章小结
+
+自动微分是深度学习的基石技术，它让复杂的梯度计算变得简单而高效：
+
+1. **核心原理**：
+   - 计算图记录运算过程
+   - 链式法则计算梯度
+   - 前向传播建图，反向传播求导
+
+2. **实现方式**：
+   - 动态图：灵活但开销大（PyTorch）
+   - 静态图：高效但不灵活（TensorFlow 1.x）
+   - 函数式：优雅且可组合（JAX）
+
+3. **常见陷阱**：
+   - 梯度累积问题
+   - 原地操作破坏计算图
+   - 梯度消失/爆炸
+   - 内存占用过大
+
+4. **优化技巧**：
+   - Gradient checkpointing
+   - 混合精度训练
+   - 向量化计算
+   - JIT编译
+
+#### 💡 实用建议
+
+1. **调试技巧**：
+   - 使用`retain_graph=True`调试
+   - 打印梯度检查正确性
+   - 可视化计算图结构
+
+2. **性能优化**：
+   - 避免不必要的梯度计算
+   - 使用`no_grad()`上下文
+   - 批量操作而非循环
+
+3. **框架选择**：
+   - 研究用PyTorch
+   - 生产用TensorFlow
+   - 性能敏感用JAX
+
+#### 🤔 思考题
+
+1. 为什么自动微分比数值微分和符号微分更适合深度学习？
+2. 动态图和静态图各有什么优缺点？
+3. 如何检测和解决梯度消失问题？
+
+下一章，我们将进入语言模型的世界，学习从统计语言模型到神经语言模型的演进历程。
+
+### 第12章：从统计语言模型到神经语言模型
+
+#### 🎯 本章导读
+
+想象你在玩一个填词游戏：
+
+"今天天气真____"
+
+你的大脑会自动冒出"好"、"冷"、"热"这些词。但为什么不是"苹果"、"跑步"呢？
+
+这就是语言模型要解决的核心问题：**预测下一个词**。从最早的数数算概率，到今天的ChatGPT，语言模型经历了一场革命性的演变。
+
+让我们一起回顾这段精彩的历史，看看AI是如何一步步学会"说话"的。
+
+#### 📊 什么是语言模型？
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from collections import defaultdict, Counter
+import math
+import seaborn as sns
+
+def 语言模型基础概念():
+    """展示语言模型的基本概念"""
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+    
+    # 1. 语言模型的任务
+    ax1.set_title('语言模型的核心任务', fontsize=14, weight='bold')
+    ax1.set_xlim(0, 10)
+    ax1.set_ylim(0, 10)
+    ax1.axis('off')
+    
+    # 输入序列
+    words = ['我', '爱', '吃', '?']
+    x_positions = [2, 3.5, 5, 6.5]
+    
+    for i, (word, x) in enumerate(zip(words, x_positions)):
+        if word == '?':
+            color = 'lightcoral'
+            edge_style = '--'
+        else:
+            color = 'lightblue'
+            edge_style = '-'
+        
+        rect = plt.Rectangle((x-0.4, 7), 0.8, 1, 
+                           facecolor=color, edgecolor='black',
+                           linestyle=edge_style, linewidth=2)
+        ax1.add_patch(rect)
+        ax1.text(x, 7.5, word, ha='center', va='center', fontsize=12)
+    
+    # 候选词和概率
+    candidates = ['苹果', '饭', '水果', '西瓜', '肉']
+    probs = [0.35, 0.30, 0.20, 0.10, 0.05]
+    y_start = 5
+    
+    for i, (word, prob) in enumerate(zip(candidates, probs)):
+        y = y_start - i * 0.8
+        
+        # 概率条
+        bar_width = prob * 3
+        rect = plt.Rectangle((7, y-0.25), bar_width, 0.5,
+                           facecolor='lightgreen', edgecolor='black')
+        ax1.add_patch(rect)
+        
+        ax1.text(6.8, y, word, ha='right', va='center', fontsize=10)
+        ax1.text(7.1 + bar_width, y, f'{prob:.0%}', 
+                ha='left', va='center', fontsize=9)
+    
+    ax1.arrow(6.8, 7.5, 0.5, 0, head_width=0.2, head_length=0.1,
+             fc='red', ec='red')
+    ax1.text(4, 9, 'P(下一个词|之前的词) = ?', fontsize=12, 
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 2. 概率链
+    ax2.set_title('句子的概率分解', fontsize=14, weight='bold')
+    ax2.set_xlim(0, 10)
+    ax2.set_ylim(0, 10)
+    ax2.axis('off')
+    
+    # 展示概率链式分解
+    sentence = "我 爱 学习 AI"
+    ax2.text(5, 8.5, f'P("{sentence}") = ?', ha='center', fontsize=12,
+            bbox=dict(boxstyle="round", facecolor='lightblue'))
+    
+    # 分解步骤
+    steps = [
+        'P(我) ×',
+        'P(爱|我) ×',
+        'P(学习|我,爱) ×',
+        'P(AI|我,爱,学习)'
+    ]
+    
+    y_pos = 6.5
+    for i, step in enumerate(steps):
+        ax2.text(5, y_pos - i*0.8, step, ha='center', fontsize=11)
+        if i < len(steps) - 1:
+            ax2.arrow(5, y_pos - i*0.8 - 0.2, 0, -0.3,
+                     head_width=0.1, head_length=0.05, fc='gray', ec='gray')
+    
+    # 示例计算
+    ax2.text(5, 2, '= 0.1 × 0.3 × 0.4 × 0.6 = 0.0072', 
+            ha='center', fontsize=11, color='green',
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    
+    # 3. 困惑度
+    ax3.set_title('困惑度（Perplexity）', fontsize=14, weight='bold')
+    
+    # 两个模型的困惑度对比
+    models = ['模型A', '模型B']
+    perplexities = [150, 50]
+    colors = ['lightcoral', 'lightgreen']
+    
+    bars = ax3.bar(models, perplexities, color=colors, edgecolor='black', linewidth=2)
+    ax3.set_ylabel('困惑度')
+    ax3.set_ylim(0, 200)
+    
+    # 标注
+    for bar, ppl in zip(bars, perplexities):
+        height = bar.get_height()
+        ax3.text(bar.get_x() + bar.get_width()/2, height + 5,
+                f'PPL={ppl}', ha='center', va='bottom', fontsize=11)
+    
+    # 解释
+    ax3.text(0.5, 0.95, '困惑度 = 平均每个词的选择数\n越低越好！',
+            transform=ax3.transAxes, ha='center', va='top',
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    ax3.grid(True, alpha=0.3, axis='y')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("📝 语言模型的定义：")
+    print("1. 给定前文，预测下一个词的概率分布")
+    print("2. 可以计算任意文本序列的概率")
+    print("3. 困惑度是评价指标，表示模型的不确定性")
+
+语言模型基础概念()
+```
+
+#### 🎲 N-gram：统计语言模型的巅峰
+
+```python
+class NGramLanguageModel:
+    """实现一个N-gram语言模型"""
+    
+    def __init__(self, n=2):
+        self.n = n
+        self.counts = defaultdict(Counter)
+        self.vocab = set(['<s>', '</s>'])  # 开始和结束标记
+        
+    def train(self, sentences):
+        """训练N-gram模型"""
+        for sentence in sentences:
+            # 添加开始和结束标记
+            tokens = ['<s>'] * (self.n - 1) + sentence.split() + ['</s>']
+            self.vocab.update(tokens)
+            
+            # 统计n-gram
+            for i in range(len(tokens) - self.n + 1):
+                context = tuple(tokens[i:i+self.n-1])
+                next_word = tokens[i+self.n-1]
+                self.counts[context][next_word] += 1
+    
+    def predict_next(self, context):
+        """预测下一个词的概率分布"""
+        context = tuple(context.split()[-self.n+1:])  # 只保留最近的n-1个词
+        
+        if context not in self.counts:
+            # 未见过的上下文，返回均匀分布
+            return {word: 1/len(self.vocab) for word in self.vocab}
+        
+        # 计算概率分布
+        word_counts = self.counts[context]
+        total = sum(word_counts.values())
+        
+        return {word: count/total for word, count in word_counts.items()}
+    
+    def generate(self, start_words="", max_length=20):
+        """生成文本"""
+        tokens = start_words.split() if start_words else []
+        
+        # 添加开始标记
+        tokens = ['<s>'] * (self.n - 1) + tokens
+        
+        for _ in range(max_length):
+            context = tuple(tokens[-self.n+1:])
+            probs = self.predict_next(' '.join(context))
+            
+            # 按概率采样
+            words = list(probs.keys())
+            weights = list(probs.values())
+            next_word = np.random.choice(words, p=weights)
+            
+            if next_word == '</s>':
+                break
+                
+            tokens.append(next_word)
+        
+        # 去掉开始标记
+        return ' '.join(tokens[self.n-1:])
+
+def N_gram模型演示():
+    """演示N-gram模型的工作原理"""
+    
+    # 训练数据
+    sentences = [
+        "我 爱 吃 苹果",
+        "我 爱 吃 香蕉",
+        "他 爱 吃 苹果",
+        "我 喜欢 学习 AI",
+        "他 喜欢 学习 数学",
+        "今天 天气 很 好",
+        "今天 天气 不 错"
+    ]
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. Unigram模型
+    ax1.set_title('Unigram模型（n=1）', fontsize=14, weight='bold')
+    
+    unigram = NGramLanguageModel(n=1)
+    unigram.train(sentences)
+    
+    # 统计词频
+    all_words = []
+    for sent in sentences:
+        all_words.extend(sent.split())
+    word_counts = Counter(all_words)
+    
+    # 绘制词频
+    words, counts = zip(*word_counts.most_common(10))
+    ax1.bar(words, counts, color='lightblue', edgecolor='black')
+    ax1.set_xlabel('词')
+    ax1.set_ylabel('频率')
+    ax1.tick_params(axis='x', rotation=45)
+    
+    # 2. Bigram模型
+    ax2.set_title('Bigram模型（n=2）', fontsize=14, weight='bold')
+    
+    bigram = NGramLanguageModel(n=2)
+    bigram.train(sentences)
+    
+    # 展示条件概率
+    context = "我"
+    probs = bigram.predict_next(context)
+    
+    # 只显示概率>0的词
+    filtered_probs = {k: v for k, v in probs.items() if v > 0 and k not in ['<s>', '</s>']}
+    if filtered_probs:
+        words = list(filtered_probs.keys())
+        probs_values = list(filtered_probs.values())
+        
+        ax2.barh(words, probs_values, color='lightgreen', edgecolor='black')
+        ax2.set_xlabel('概率')
+        ax2.set_title(f'P(下一个词|"{context}")')
+        
+        for i, (word, prob) in enumerate(zip(words, probs_values)):
+            ax2.text(prob + 0.01, i, f'{prob:.2f}', va='center')
+    
+    # 3. 不同n值的效果
+    ax3.set_title('不同n值的效果', fontsize=14, weight='bold')
+    ax3.axis('off')
+    
+    n_values = [1, 2, 3, 4]
+    y_pos = 0.9
+    
+    for n in n_values:
+        model = NGramLanguageModel(n=n)
+        model.train(sentences)
+        
+        # 生成文本
+        generated = model.generate(start_words="我", max_length=10)
+        
+        ax3.text(0.1, y_pos, f'n={n}:', fontsize=12, weight='bold')
+        ax3.text(0.25, y_pos, generated, fontsize=11,
+                bbox=dict(boxstyle="round", facecolor='lightblue', alpha=0.5))
+        
+        y_pos -= 0.2
+    
+    # 添加优缺点
+    ax3.text(0.5, 0.3, 'N-gram的权衡：\n'
+                       '• n↑：更准确，但数据稀疏\n'
+                       '• n↓：更平滑，但丢失长程依赖',
+            transform=ax3.transAxes, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 4. 数据稀疏问题
+    ax4.set_title('数据稀疏问题', fontsize=14, weight='bold')
+    
+    # 计算不同n值的覆盖率
+    n_values = [1, 2, 3, 4, 5]
+    coverage_rates = []
+    vocab_sizes = []
+    
+    for n in n_values:
+        model = NGramLanguageModel(n=n)
+        model.train(sentences)
+        
+        # 统计看到的n-gram数量
+        total_ngrams = sum(len(counter) for counter in model.counts.values())
+        # 理论可能的n-gram数量
+        vocab_size = len(model.vocab)
+        possible_ngrams = vocab_size ** n
+        
+        coverage = min(total_ngrams / possible_ngrams * 100, 100)
+        coverage_rates.append(coverage)
+        vocab_sizes.append(possible_ngrams)
+    
+    ax4_twin = ax4.twinx()
+    
+    line1 = ax4.plot(n_values, coverage_rates, 'b-o', markersize=8, 
+                     linewidth=2, label='覆盖率')
+    line2 = ax4_twin.semilogy(n_values, vocab_sizes, 'r-s', markersize=8,
+                              linewidth=2, label='可能组合数')
+    
+    ax4.set_xlabel('n值')
+    ax4.set_ylabel('覆盖率 (%)', color='blue')
+    ax4_twin.set_ylabel('可能的n-gram数', color='red')
+    ax4.tick_params(axis='y', labelcolor='blue')
+    ax4_twin.tick_params(axis='y', labelcolor='red')
+    
+    # 合并图例
+    lines = line1 + line2
+    labels = [l.get_label() for l in lines]
+    ax4.legend(lines, labels, loc='center right')
+    ax4.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("📊 N-gram模型总结：")
+    print("1. 简单直观，易于实现")
+    print("2. n越大，上下文越丰富，但数据稀疏")
+    print("3. 无法捕捉长距离依赖")
+    print("4. 需要平滑技术处理未见过的n-gram")
+
+N_gram模型演示()
+```
+
+#### 🧠 神经语言模型的诞生
+
+```python
+def 神经语言模型演示():
+    """展示神经语言模型的原理"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. 词嵌入的引入
+    ax1.set_title('词嵌入：从离散到连续', fontsize=14, weight='bold')
+    ax1.set_xlim(-3, 3)
+    ax1.set_ylim(-3, 3)
+    
+    # One-hot编码的问题
+    words = ['猫', '狗', '汽车', '飞机', '老虎']
+    # 模拟的2D词嵌入
+    embeddings = {
+        '猫': [1.2, 0.8],
+        '狗': [1.0, 0.9],
+        '老虎': [1.3, 0.7],
+        '汽车': [-1.5, 1.2],
+        '飞机': [-1.3, 1.5]
+    }
+    
+    # 绘制词向量
+    for word, (x, y) in embeddings.items():
+        ax1.scatter(x, y, s=200, alpha=0.6)
+        ax1.annotate(word, (x, y), xytext=(5, 5), 
+                    textcoords='offset points', fontsize=12)
+    
+    # 画聚类圈
+    animal_center = [1.17, 0.8]
+    vehicle_center = [-1.4, 1.35]
+    
+    circle1 = plt.Circle(animal_center, 0.5, color='lightblue', 
+                        fill=True, alpha=0.3)
+    circle2 = plt.Circle(vehicle_center, 0.5, color='lightgreen', 
+                        fill=True, alpha=0.3)
+    ax1.add_patch(circle1)
+    ax1.add_patch(circle2)
+    
+    ax1.text(animal_center[0], animal_center[1]-0.7, '动物', 
+            ha='center', fontsize=10, weight='bold')
+    ax1.text(vehicle_center[0], vehicle_center[1]-0.7, '交通工具', 
+            ha='center', fontsize=10, weight='bold')
+    
+    ax1.set_xlabel('维度1')
+    ax1.set_ylabel('维度2')
+    ax1.grid(True, alpha=0.3)
+    ax1.axhline(y=0, color='k', linestyle='-', alpha=0.3)
+    ax1.axvline(x=0, color='k', linestyle='-', alpha=0.3)
+    
+    # 2. 前馈神经语言模型
+    ax2.set_title('前馈神经语言模型（Bengio et al. 2003）', fontsize=14, weight='bold')
+    ax2.set_xlim(0, 10)
+    ax2.set_ylim(0, 10)
+    ax2.axis('off')
+    
+    # 网络结构
+    # 输入层（3个词）
+    input_words = ['我', '爱', '吃']
+    for i, word in enumerate(input_words):
+        rect = plt.Rectangle((1, 7-i*1.5), 1, 0.8,
+                           facecolor='lightblue', edgecolor='black', linewidth=2)
+        ax2.add_patch(rect)
+        ax2.text(1.5, 7.4-i*1.5, word, ha='center', va='center', fontsize=11)
+    
+    # 嵌入层
+    ax2.text(3.5, 8, '嵌入层', ha='center', fontsize=10, weight='bold')
+    for i in range(3):
+        for j in range(4):  # 4维嵌入
+            circle = plt.Circle((3.5+j*0.3, 7-i*1.5), 0.1,
+                              facecolor='lightgreen', edgecolor='black')
+            ax2.add_patch(circle)
+    
+    # 隐藏层
+    ax2.text(6, 8, '隐藏层', ha='center', fontsize=10, weight='bold')
+    for i in range(5):
+        circle = plt.Circle((6, 6.5-i*0.6), 0.2,
+                          facecolor='lightyellow', edgecolor='black')
+        ax2.add_patch(circle)
+    
+    # 输出层
+    ax2.text(8.5, 8, '输出层', ha='center', fontsize=10, weight='bold')
+    output_words = ['苹果', '香蕉', '...', '西瓜']
+    for i, word in enumerate(output_words):
+        rect = plt.Rectangle((8, 6.5-i*0.8), 1, 0.6,
+                           facecolor='lightcoral', edgecolor='black')
+        ax2.add_patch(rect)
+        ax2.text(8.5, 6.8-i*0.8, word, ha='center', va='center', fontsize=9)
+    
+    # 画连接线（简化）
+    # 嵌入到隐藏
+    ax2.arrow(4.7, 6, 1, 0, head_width=0.1, head_length=0.1,
+             fc='gray', ec='gray', alpha=0.5)
+    # 隐藏到输出
+    ax2.arrow(6.3, 5, 1.5, 0, head_width=0.1, head_length=0.1,
+             fc='gray', ec='gray', alpha=0.5)
+    
+    # 3. RNN语言模型
+    ax3.set_title('RNN语言模型：处理变长序列', fontsize=14, weight='bold')
+    ax3.set_xlim(0, 10)
+    ax3.set_ylim(0, 10)
+    ax3.axis('off')
+    
+    # RNN展开图
+    words = ['我', '爱', '学习', 'AI']
+    hidden_states = ['h0', 'h1', 'h2', 'h3']
+    
+    for i, (word, h) in enumerate(zip(words, hidden_states)):
+        x = 1.5 + i * 2
+        
+        # 输入
+        rect = plt.Rectangle((x-0.4, 3), 0.8, 0.8,
+                           facecolor='lightblue', edgecolor='black')
+        ax3.add_patch(rect)
+        ax3.text(x, 3.4, word, ha='center', va='center', fontsize=10)
+        
+        # 隐藏状态
+        circle = plt.Circle((x, 5), 0.4, facecolor='lightgreen',
+                          edgecolor='black', linewidth=2)
+        ax3.add_patch(circle)
+        ax3.text(x, 5, h, ha='center', va='center', fontsize=10)
+        
+        # 输出
+        rect = plt.Rectangle((x-0.4, 7), 0.8, 0.8,
+                           facecolor='lightcoral', edgecolor='black')
+        ax3.add_patch(rect)
+        if i < len(words) - 1:
+            ax3.text(x, 7.4, words[i+1], ha='center', va='center', fontsize=10)
+        else:
+            ax3.text(x, 7.4, '?', ha='center', va='center', fontsize=10)
+        
+        # 连接
+        # 输入到隐藏
+        ax3.arrow(x, 3.8, 0, 0.7, head_width=0.1, head_length=0.05,
+                 fc='blue', ec='blue')
+        # 隐藏到输出
+        ax3.arrow(x, 5.5, 0, 1.3, head_width=0.1, head_length=0.05,
+                 fc='red', ec='red')
+        # 隐藏到隐藏
+        if i < len(words) - 1:
+            ax3.arrow(x+0.4, 5, 1.2, 0, head_width=0.1, head_length=0.05,
+                     fc='green', ec='green', linestyle='--')
+    
+    ax3.text(5, 1.5, '时间展开 →', ha='center', fontsize=12, weight='bold')
+    
+    # 4. 对比统计vs神经
+    ax4.set_title('统计模型 vs 神经模型', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    # 对比表格
+    comparison = [
+        ['特性', '统计模型(N-gram)', '神经模型'],
+        ['---', '---', '---'],
+        ['参数量', '词表大小^n', '固定大小'],
+        ['泛化能力', '差（精确匹配）', '好（语义相似）'],
+        ['长程依赖', f'最多{3}个词', '理论上无限'],
+        ['计算效率', '查表O(1)', '矩阵运算O(n)'],
+        ['可解释性', '高', '低'],
+        ['数据需求', '中等', '大量']
+    ]
+    
+    # 绘制表格
+    cell_height = 0.8
+    cell_width = 3
+    
+    for i, row in enumerate(comparison):
+        for j, cell in enumerate(row):
+            x = 1 + j * cell_width
+            y = 8 - i * cell_height
+            
+            # 表头特殊处理
+            if i == 0:
+                color = 'lightgray'
+                weight = 'bold'
+            elif i == 1:
+                continue
+            elif j == 0:
+                color = 'lightblue'
+                weight = 'bold'
+            else:
+                color = 'white'
+                weight = 'normal'
+            
+            if i != 1:  # 跳过分隔线
+                rect = plt.Rectangle((x-cell_width/2, y-cell_height/2), 
+                                   cell_width, cell_height,
+                                   facecolor=color, edgecolor='black')
+                ax4.add_patch(rect)
+                ax4.text(x, y, cell, ha='center', va='center', 
+                        fontsize=10, weight=weight)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🧠 神经语言模型的革命：")
+    print("1. 词嵌入：相似的词有相似的表示")
+    print("2. 参数共享：不同位置共享权重")
+    print("3. 非线性：可以学习复杂模式")
+    print("4. 端到端：从输入到输出一体化学习")
+
+神经语言模型演示()
+```
+
+#### 🚀 从RNN到Transformer
+
+```python
+def 语言模型演化史():
+    """展示语言模型的演化历程"""
+    
+    fig = plt.figure(figsize=(16, 10))
+    ax = fig.add_subplot(111)
+    ax.set_xlim(1950, 2030)
+    ax.set_ylim(0, 10)
+    ax.set_xlabel('年份', fontsize=12)
+    ax.set_ylabel('模型复杂度/影响力', fontsize=12)
+    ax.set_title('语言模型发展史', fontsize=16, weight='bold')
+    
+    # 重要里程碑
+    milestones = [
+        (1948, 1, 'Shannon\n信息论', 'blue'),
+        (1980, 2, 'N-gram\n统计模型', 'green'),
+        (2003, 3, '神经语言模型\n(Bengio)', 'orange'),
+        (2013, 4, 'Word2Vec\n词嵌入革命', 'red'),
+        (2014, 5, 'RNN/LSTM\n序列建模', 'purple'),
+        (2017, 7, 'Transformer\n注意力机制', 'darkred'),
+        (2018, 8, 'BERT\n预训练时代', 'darkblue'),
+        (2020, 9, 'GPT-3\n大模型元年', 'darkgreen'),
+        (2023, 9.5, 'ChatGPT\nAI对话革命', 'black'),
+    ]
+    
+    # 绘制时间线
+    for year, impact, name, color in milestones:
+        ax.scatter(year, impact, s=300, c=color, alpha=0.6, edgecolors='black', linewidth=2)
+        ax.annotate(name, (year, impact), xytext=(0, 20), 
+                   textcoords='offset points', ha='center', fontsize=10,
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.3))
+    
+    # 连接线显示演化
+    years = [m[0] for m in milestones]
+    impacts = [m[1] for m in milestones]
+    ax.plot(years, impacts, 'k--', alpha=0.3, linewidth=2)
+    
+    # 添加时代标注
+    eras = [
+        (1950, 1990, 0.5, '规则时代', 'lightblue'),
+        (1990, 2010, 0.5, '统计时代', 'lightgreen'),
+        (2010, 2017, 0.5, '深度学习时代', 'lightyellow'),
+        (2017, 2030, 0.5, '大模型时代', 'lightcoral'),
+    ]
+    
+    for start, end, y, name, color in eras:
+        ax.axvspan(start, end, ymin=0, ymax=0.15, alpha=0.3, color=color)
+        ax.text((start+end)/2, y, name, ha='center', fontsize=12, weight='bold')
+    
+    # 添加关键创新标注
+    innovations = [
+        (2013, 6, '分布式表示'),
+        (2017, 6, '自注意力'),
+        (2018, 6, '预训练-微调'),
+        (2020, 6, '少样本学习'),
+    ]
+    
+    for year, y, innovation in innovations:
+        ax.annotate(innovation, xy=(year, y), xytext=(year, y+1),
+                   arrowprops=dict(arrowstyle='->', color='gray', alpha=0.5),
+                   fontsize=9, ha='center', style='italic')
+    
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(0, 11)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # 模型参数量对比
+    fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # 参数量增长
+    ax1.set_title('模型参数量指数增长', fontsize=14, weight='bold')
+    
+    models = ['N-gram', 'NNLM\n(2003)', 'Word2Vec\n(2013)', 'LSTM\n(2015)', 
+              'Transformer\n(2017)', 'BERT\n(2018)', 'GPT-2\n(2019)', 
+              'GPT-3\n(2020)', 'GPT-4\n(2023)']
+    params = [1e6, 1e7, 3e8, 5e8, 1e8, 3.4e8, 1.5e9, 175e9, 1.7e12]  # 估计值
+    
+    ax1.semilogy(models, params, 'bo-', markersize=10, linewidth=2)
+    ax1.set_ylabel('参数量')
+    ax1.set_xlabel('模型')
+    ax1.tick_params(axis='x', rotation=45)
+    ax1.grid(True, alpha=0.3)
+    
+    # 标注数量级
+    for i, (model, param) in enumerate(zip(models, params)):
+        if param >= 1e12:
+            label = f'{param/1e12:.1f}T'
+        elif param >= 1e9:
+            label = f'{param/1e9:.0f}B'
+        elif param >= 1e6:
+            label = f'{param/1e6:.0f}M'
+        else:
+            label = f'{param:.0f}'
+        ax1.text(i, param*1.5, label, ha='center', fontsize=9)
+    
+    # 性能提升
+    ax2.set_title('模型能力的提升', fontsize=14, weight='bold')
+    
+    capabilities = ['语法理解', '语义理解', '常识推理', '上下文学习', '创造生成']
+    ngram_scores = [30, 10, 5, 0, 0]
+    rnn_scores = [70, 60, 30, 20, 10]
+    transformer_scores = [95, 90, 80, 85, 70]
+    
+    x = np.arange(len(capabilities))
+    width = 0.25
+    
+    ax2.bar(x - width, ngram_scores, width, label='N-gram', color='lightblue')
+    ax2.bar(x, rnn_scores, width, label='RNN/LSTM', color='lightgreen')
+    ax2.bar(x + width, transformer_scores, width, label='Transformer+', color='lightcoral')
+    
+    ax2.set_ylabel('能力得分')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(capabilities, rotation=15, ha='right')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3, axis='y')
+    ax2.set_ylim(0, 100)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("📈 语言模型演化的关键趋势：")
+    print("1. 从离散到连续：one-hot → 词嵌入")
+    print("2. 从局部到全局：n-gram → 自注意力")
+    print("3. 从特定到通用：任务专用 → 通用预训练")
+    print("4. 从小到大：MB → TB级参数")
+
+语言模型演化史()
+```
+
+#### 💡 实战：构建简单的神经语言模型
+
+```python
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class SimpleNeuralLM(nn.Module):
+    """一个简单的神经语言模型"""
+    
+    def __init__(self, vocab_size, embedding_dim=128, hidden_dim=256, n_layers=2):
+        super(SimpleNeuralLM, self).__init__()
+        
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, n_layers, 
+                           batch_first=True, dropout=0.2)
+        self.fc = nn.Linear(hidden_dim, vocab_size)
+        
+    def forward(self, x, hidden=None):
+        # x: [batch_size, seq_len]
+        embedded = self.embedding(x)  # [batch_size, seq_len, embedding_dim]
+        output, hidden = self.lstm(embedded, hidden)  # [batch_size, seq_len, hidden_dim]
+        predictions = self.fc(output)  # [batch_size, seq_len, vocab_size]
+        return predictions, hidden
+    
+    def generate(self, start_tokens, max_length=50, temperature=1.0):
+        """生成文本"""
+        self.eval()
+        tokens = start_tokens
+        hidden = None
+        
+        with torch.no_grad():
+            for _ in range(max_length):
+                # 前向传播
+                input_tensor = torch.tensor([tokens[-10:]])  # 只看最近10个词
+                output, hidden = self.forward(input_tensor, hidden)
+                
+                # 获取最后一个位置的输出
+                logits = output[0, -1, :] / temperature
+                probs = F.softmax(logits, dim=0)
+                
+                # 采样
+                next_token = torch.multinomial(probs, 1).item()
+                tokens.append(next_token)
+                
+                # 如果生成了结束符，停止
+                if next_token == 2:  # 假设2是</s>
+                    break
+        
+        return tokens
+
+def 对比实验():
+    """对比N-gram和神经语言模型"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. 泛化能力对比
+    ax1.set_title('泛化能力：处理未见过的组合', fontsize=14, weight='bold')
+    ax1.axis('off')
+    
+    # 示例
+    seen_phrases = ["我爱吃苹果", "他爱吃香蕉", "她喜欢吃橙子"]
+    unseen_phrase = "我喜欢吃香蕉"
+    
+    y_pos = 0.9
+    ax1.text(0.5, y_pos, '训练数据：', transform=ax1.transAxes, 
+            fontsize=12, weight='bold', ha='center')
+    
+    y_pos -= 0.1
+    for phrase in seen_phrases:
+        ax1.text(0.5, y_pos, phrase, transform=ax1.transAxes,
+                fontsize=11, ha='center',
+                bbox=dict(boxstyle="round", facecolor='lightblue', alpha=0.5))
+        y_pos -= 0.08
+    
+    y_pos -= 0.05
+    ax1.text(0.5, y_pos, '测试：' + unseen_phrase, transform=ax1.transAxes,
+            fontsize=12, weight='bold', ha='center', color='red')
+    
+    y_pos -= 0.15
+    ax1.text(0.25, y_pos, 'N-gram:\n未见过"我喜欢吃"\n预测失败❌', 
+            transform=ax1.transAxes, fontsize=10, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.5))
+    
+    ax1.text(0.75, y_pos, '神经模型:\n理解语义相似性\n预测成功✓', 
+            transform=ax1.transAxes, fontsize=10, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    
+    # 2. 长程依赖处理
+    ax2.set_title('长程依赖：记住远处的信息', fontsize=14, weight='bold')
+    
+    sentence = "那个昨天我在公园里遇到的戴着红帽子的女孩今天又来了"
+    important_words = [(0, 2), (29, 31)]  # "那个"和"女孩"
+    
+    # 可视化句子
+    char_positions = list(range(len(sentence)))
+    char_heights = [1] * len(sentence)
+    
+    # N-gram视野（假设trigram）
+    ngram_window = 3
+    ax2.bar(char_positions[:ngram_window], char_heights[:ngram_window], 
+           color='lightblue', edgecolor='black', alpha=0.7, label='N-gram视野')
+    ax2.bar(char_positions[ngram_window:], char_heights[ngram_window:], 
+           color='lightgray', edgecolor='black', alpha=0.5)
+    
+    # 标注重要词
+    for start, end in important_words:
+        ax2.bar(char_positions[start:end], char_heights[start:end], 
+               color='red', edgecolor='black', alpha=0.8)
+    
+    ax2.set_ylim(0, 2)
+    ax2.set_xlabel('字符位置')
+    ax2.set_title('N-gram：只能看到局部', fontsize=12)
+    ax2.legend()
+    
+    # 3. 参数效率
+    ax3.set_title('参数效率对比', fontsize=14, weight='bold')
+    
+    vocab_sizes = [1000, 5000, 10000, 50000, 100000]
+    ngram_params = [v**3 for v in vocab_sizes]  # trigram
+    neural_params = [v * 128 + 128 * 256 + 256 * v for v in vocab_sizes]  # 简化计算
+    
+    ax3.loglog(vocab_sizes, ngram_params, 'b-o', markersize=8, 
+              linewidth=2, label='N-gram (n=3)')
+    ax3.loglog(vocab_sizes, neural_params, 'r-s', markersize=8,
+              linewidth=2, label='神经模型')
+    
+    ax3.set_xlabel('词表大小')
+    ax3.set_ylabel('参数数量')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3, which="both")
+    
+    # 标注差异
+    for v, n, neural in zip(vocab_sizes[-2:], ngram_params[-2:], neural_params[-2:]):
+        ratio = n / neural
+        ax3.annotate(f'{ratio:.0f}x', xy=(v, n), xytext=(v*1.2, n),
+                    arrowprops=dict(arrowstyle='->', color='gray'),
+                    fontsize=9)
+    
+    # 4. 实际效果展示
+    ax4.set_title('生成文本质量对比', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    examples = [
+        ('N-gram生成：', '我 爱 吃 苹果 。 我 爱 吃 苹果 。 他 爱 吃', 'lightcoral'),
+        ('神经模型生成：', '我 爱 吃 苹果 ， 但是 今天 想 尝试 一些 新 的 水果', 'lightgreen'),
+    ]
+    
+    y_pos = 0.8
+    for title, text, color in examples:
+        ax4.text(0.1, y_pos, title, transform=ax4.transAxes,
+                fontsize=12, weight='bold')
+        ax4.text(0.1, y_pos-0.1, text, transform=ax4.transAxes,
+                fontsize=11, style='italic',
+                bbox=dict(boxstyle="round", facecolor=color, alpha=0.5))
+        y_pos -= 0.3
+    
+    # 评价
+    ax4.text(0.5, 0.2, '神经模型优势：\n• 更自然的语言\n• 更好的连贯性\n• 更强的创造力',
+            transform=ax4.transAxes, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🔬 实验结论：")
+    print("1. 神经模型在泛化能力上远超N-gram")
+    print("2. RNN/LSTM可以捕捉任意长度的依赖")
+    print("3. 参数效率：神经模型随词表线性增长，N-gram呈指数增长")
+    print("4. 生成质量：神经模型更自然、连贯")
+
+对比实验()
+```
+
+#### 🎓 本章小结
+
+从统计语言模型到神经语言模型，这是一次范式转变：
+
+1. **核心思想的转变**：
+   - 从"数数"到"理解"
+   - 从离散符号到连续表示
+   - 从局部特征到全局语义
+
+2. **技术突破**：
+   - 词嵌入：让词有了"意义"
+   - RNN/LSTM：处理变长序列
+   - 注意力机制：突破长程依赖限制
+
+3. **发展趋势**：
+   - 模型越来越大
+   - 预训练成为标配
+   - 从专用到通用
+
+4. **未来展望**：
+   - 更高效的架构
+   - 更好的可解释性
+   - 更强的推理能力
+
+#### 💡 实用建议
+
+1. **学习路径**：
+   - 先理解N-gram，打好概率基础
+   - 掌握词嵌入，理解分布式表示
+   - 学习RNN/Transformer架构
+
+2. **实践项目**：
+   - 实现一个简单的N-gram模型
+   - 用PyTorch构建字符级语言模型
+   - 微调预训练模型
+
+3. **深入研究**：
+   - 阅读经典论文（Bengio 2003, Mikolov 2013）
+   - 了解最新进展（GPT, BERT系列）
+   - 关注效率优化方向
+
+#### 🤔 思考题
+
+1. 为什么说词嵌入是深度学习在NLP中的第一个杀手级应用？
+2. N-gram模型在某些场景下仍然有用，你能想到哪些？
+3. 神经语言模型的"理解"和人类的理解有什么不同？
+
+恭喜你完成了第一部分的学习！下一部分，我们将深入探讨语言的表示与编码，从Tokenization开始，逐步理解现代NLP的基础技术栈。
+
+## 第二部分：语言的表示与编码
+
+### 第13章：Tokenization——把文本切成小块
+
+#### 🎯 本章导读
+
+想象你要教一个外星人读中文。你会怎么开始？
+
+"今天天气真好" → 今/天/天/气/真/好？还是 今天/天气/真/好？
+
+这就是Tokenization（分词）要解决的问题：**如何把连续的文本切分成机器能理解的基本单元**。
+
+看似简单的任务，背后却隐藏着语言处理的深刻挑战。从最早的空格分词，到今天的子词算法，分词技术的演进见证了NLP的发展历程。
+
+#### 🔤 为什么需要Tokenization？
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from collections import Counter, defaultdict
+import re
+
+def 为什么需要分词():
+    """展示分词的必要性"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. 计算机vs人类理解文本
+    ax1.set_title('人类vs计算机：理解文本的差异', fontsize=14, weight='bold')
+    ax1.set_xlim(0, 10)
+    ax1.set_ylim(0, 10)
+    ax1.axis('off')
+    
+    # 人类视角
+    ax1.text(2.5, 8, '人类视角', fontsize=12, weight='bold', ha='center')
+    sentence_human = "我爱自然语言处理"
+    ax1.text(2.5, 6.5, sentence_human, fontsize=14, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightblue'))
+    ax1.text(2.5, 5, '直接理解整体含义', fontsize=10, ha='center', style='italic')
+    
+    # 计算机视角
+    ax1.text(7.5, 8, '计算机视角', fontsize=12, weight='bold', ha='center')
+    
+    # 字节表示
+    bytes_repr = sentence_human.encode('utf-8')
+    byte_str = ' '.join([f'{b:02X}' for b in bytes_repr[:12]]) + '...'
+    ax1.text(7.5, 6.5, byte_str, fontsize=10, ha='center', family='monospace',
+            bbox=dict(boxstyle="round", facecolor='lightcoral'))
+    ax1.text(7.5, 5, '只看到字节序列', fontsize=10, ha='center', style='italic')
+    
+    # 中间的问号
+    ax1.text(5, 6.5, '?', fontsize=30, ha='center', color='red', weight='bold')
+    ax1.arrow(3.5, 6.5, 1, 0, head_width=0.2, head_length=0.1, fc='gray', ec='gray')
+    ax1.arrow(6.5, 6.5, -1, 0, head_width=0.2, head_length=0.1, fc='gray', ec='gray')
+    
+    ax1.text(5, 3, 'Tokenization：将文本转换为\n计算机可处理的单元', 
+            fontsize=12, ha='center', weight='bold',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 2. 不同语言的挑战
+    ax2.set_title('不同语言的分词挑战', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    languages = [
+        ('英语', 'I love natural language processing', 'lightblue', '空格天然分隔'),
+        ('中文', '我爱自然语言处理', 'lightgreen', '没有空格分隔'),
+        ('日语', '私は自然言語処理が好きです', 'lightcoral', '混合文字系统'),
+        ('德语', 'Natursprachverarbeitung', 'lightyellow', '复合词问题')
+    ]
+    
+    y_pos = 0.85
+    for lang, text, color, challenge in languages:
+        ax2.text(0.15, y_pos, f'{lang}：', fontsize=11, weight='bold',
+                transform=ax2.transAxes)
+        ax2.text(0.25, y_pos, text, fontsize=10,
+                transform=ax2.transAxes,
+                bbox=dict(boxstyle="round", facecolor=color, alpha=0.7))
+        ax2.text(0.75, y_pos, challenge, fontsize=9, style='italic',
+                transform=ax2.transAxes, color='red')
+        y_pos -= 0.2
+    
+    # 3. 词汇量爆炸问题
+    ax3.set_title('词汇量爆炸问题', fontsize=14, weight='bold')
+    
+    # 模拟不同粒度的词汇量
+    granularities = ['字符级', '子词级', '词级', '短语级']
+    vocab_sizes = [100, 10000, 100000, 1000000]
+    colors = ['green', 'blue', 'orange', 'red']
+    
+    bars = ax3.bar(granularities, vocab_sizes, color=colors, alpha=0.7, edgecolor='black')
+    ax3.set_ylabel('词汇表大小')
+    ax3.set_yscale('log')
+    
+    # 标注优缺点
+    pros_cons = [
+        ('小词表\n易处理', '语义弱'),
+        ('平衡', '主流'),
+        ('语义强', '稀疏'),
+        ('太大', '不实用')
+    ]
+    
+    for bar, (pro, con) in zip(bars, pros_cons):
+        height = bar.get_height()
+        ax3.text(bar.get_x() + bar.get_width()/2, height * 1.5,
+                pro, ha='center', va='bottom', fontsize=9, color='green')
+        ax3.text(bar.get_x() + bar.get_width()/2, height * 0.5,
+                con, ha='center', va='top', fontsize=9, color='red')
+    
+    ax3.grid(True, alpha=0.3, axis='y')
+    
+    # 4. OOV问题
+    ax4.set_title('OOV（未登录词）问题', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    # 训练词汇
+    train_vocab = {'我', '爱', '吃', '苹果', '香蕉', '学习', 'AI'}
+    
+    # 测试句子
+    test_sentences = [
+        ('我爱吃榴莲', ['我', '爱', '吃', '[UNK]']),
+        ('我在研究GPT-4', ['我', '[UNK]', '[UNK]', '[UNK]']),
+        ('他喜欢编程', ['[UNK]', '[UNK]', '[UNK]'])
+    ]
+    
+    # 展示词汇表
+    ax4.text(0.2, 0.9, '训练词汇表：', transform=ax4.transAxes, 
+            fontsize=12, weight='bold')
+    vocab_str = ', '.join(train_vocab)
+    ax4.text(0.2, 0.83, vocab_str, transform=ax4.transAxes,
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightblue'))
+    
+    # 展示OOV问题
+    ax4.text(0.2, 0.65, '测试时遇到的问题：', transform=ax4.transAxes,
+            fontsize=12, weight='bold')
+    
+    y_pos = 0.55
+    for sent, tokens in test_sentences:
+        ax4.text(0.2, y_pos, f'"{sent}" →', transform=ax4.transAxes, fontsize=10)
+        
+        x_pos = 0.5
+        for token in tokens:
+            if token == '[UNK]':
+                color = 'lightcoral'
+            else:
+                color = 'lightgreen'
+            ax4.text(x_pos, y_pos, token, transform=ax4.transAxes,
+                    fontsize=10, bbox=dict(boxstyle="round", facecolor=color))
+            x_pos += 0.1
+        
+        y_pos -= 0.12
+    
+    ax4.text(0.5, 0.15, 'OOV问题导致信息丢失！', transform=ax4.transAxes,
+            fontsize=12, ha='center', color='red', weight='bold',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("📝 Tokenization的核心挑战：")
+    print("1. 如何定义合适的基本单元")
+    print("2. 平衡词汇表大小和表达能力")
+    print("3. 处理未见过的词（OOV）")
+    print("4. 适应不同语言的特点")
+
+为什么需要分词()
+```
+
+#### 🔪 传统分词方法
+
+```python
+class TraditionalTokenizers:
+    """传统分词方法的实现"""
+    
+    @staticmethod
+    def space_tokenize(text):
+        """基于空格的分词"""
+        return text.split()
+    
+    @staticmethod
+    def char_tokenize(text):
+        """字符级分词"""
+        return list(text)
+    
+    @staticmethod
+    def word_tokenize_english(text):
+        """英文词级分词（简单版）"""
+        # 处理标点符号
+        text = re.sub(r'([.!?,;:])', r' \1 ', text)
+        return text.split()
+    
+    @staticmethod
+    def jieba_tokenize_chinese(text):
+        """中文分词（模拟）"""
+        # 简化的最大匹配算法
+        vocab = {'我', '爱', '自然', '语言', '处理', '自然语言处理', 
+                '今天', '天气', '很好', '学习'}
+        
+        result = []
+        i = 0
+        while i < len(text):
+            # 从最长的词开始匹配
+            for length in range(min(5, len(text)-i), 0, -1):
+                word = text[i:i+length]
+                if word in vocab or length == 1:
+                    result.append(word)
+                    i += length
+                    break
+        
+        return result
+
+def 传统分词方法对比():
+    """对比不同的传统分词方法"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    tokenizers = TraditionalTokenizers()
+    
+    # 1. 空格分词
+    ax1.set_title('空格分词：最简单但有局限', fontsize=14, weight='bold')
+    ax1.axis('off')
+    
+    texts = [
+        ("Hello world!", "简单情况✓"),
+        ("It's a test.", "缩写问题❌"),
+        ("我爱Python", "中文失效❌"),
+        ("New York City", "词组问题❌")
+    ]
+    
+    y_pos = 0.9
+    for text, issue in texts:
+        tokens = tokenizers.space_tokenize(text)
+        
+        ax1.text(0.1, y_pos, f'"{text}"', transform=ax1.transAxes, fontsize=11)
+        ax1.text(0.4, y_pos, '→', transform=ax1.transAxes, fontsize=11)
+        ax1.text(0.45, y_pos, str(tokens), transform=ax1.transAxes, fontsize=10,
+                bbox=dict(boxstyle="round", facecolor='lightblue'))
+        ax1.text(0.8, y_pos, issue, transform=ax1.transAxes, fontsize=9,
+                color='green' if '✓' in issue else 'red')
+        y_pos -= 0.15
+    
+    # 2. 字符级分词
+    ax2.set_title('字符级分词：通用但语义弱', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    text = "Hello 世界"
+    char_tokens = tokenizers.char_tokenize(text)
+    
+    # 可视化字符分词
+    y_center = 0.6
+    x_start = 0.1
+    
+    for i, char in enumerate(char_tokens):
+        x = x_start + i * 0.08
+        
+        # 字符框
+        rect = patches.Rectangle((x, y_center-0.05), 0.07, 0.1,
+                               linewidth=2, edgecolor='black',
+                               facecolor='lightgreen',
+                               transform=ax2.transAxes)
+        ax2.add_patch(rect)
+        ax2.text(x+0.035, y_center, char, transform=ax2.transAxes,
+                ha='center', va='center', fontsize=12)
+    
+    # 优缺点
+    ax2.text(0.5, 0.3, '优点：\n• 词汇表小（~100-200）\n• 无OOV问题\n• 跨语言通用',
+            transform=ax2.transAxes, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    
+    ax2.text(0.5, 0.1, '缺点：\n• 序列太长\n• 语义信息弱\n• 计算效率低',
+            transform=ax2.transAxes, ha='center',
+            bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.5))
+    
+    # 3. 中文分词挑战
+    ax3.set_title('中文分词的歧义性', fontsize=14, weight='bold')
+    ax3.axis('off')
+    
+    # 分词歧义示例
+    ambiguous_text = "南京市长江大桥"
+    
+    segmentations = [
+        ('南京市/长江/大桥', '南京市的长江大桥'),
+        ('南京/市长/江大桥', '市长叫江大桥？'),
+        ('南京市/长/江大桥', '长的江大桥？')
+    ]
+    
+    ax3.text(0.5, 0.85, f'原文："{ambiguous_text}"', 
+            transform=ax3.transAxes, ha='center', fontsize=12, weight='bold')
+    
+    y_pos = 0.65
+    for seg, interpretation in segmentations:
+        ax3.text(0.2, y_pos, seg, transform=ax3.transAxes, fontsize=11,
+                bbox=dict(boxstyle="round", facecolor='lightblue'))
+        ax3.text(0.5, y_pos, '→', transform=ax3.transAxes, fontsize=11)
+        ax3.text(0.55, y_pos, interpretation, transform=ax3.transAxes,
+                fontsize=10, style='italic')
+        y_pos -= 0.15
+    
+    ax3.text(0.5, 0.15, '分词歧义需要上下文才能解决！',
+            transform=ax3.transAxes, ha='center', fontsize=11,
+            color='red', weight='bold')
+    
+    # 4. 词频统计的影响
+    ax4.set_title('基于词频的分词效果', fontsize=14, weight='bold')
+    
+    # 模拟词频
+    text = "自然语言处理是人工智能的重要分支"
+    
+    # 不同分词粒度的词频
+    word_freq = {
+        '字符级': {'自': 1, '然': 1, '语': 1, '言': 1, '处': 1, '理': 1},
+        '词级': {'自然语言处理': 1, '是': 1, '人工智能': 1, '的': 1},
+        '混合': {'自然': 1, '语言': 1, '处理': 1, '人工': 1, '智能': 1}
+    }
+    
+    x = np.arange(3)
+    unique_tokens = [6, 4, 5]
+    total_tokens = [13, 7, 9]
+    
+    width = 0.35
+    ax4.bar(x - width/2, unique_tokens, width, label='独特词数', color='lightblue')
+    ax4.bar(x + width/2, total_tokens, width, label='总词数', color='lightgreen')
+    
+    ax4.set_xticks(x)
+    ax4.set_xticklabels(['字符级', '词级', '混合'])
+    ax4.set_ylabel('数量')
+    ax4.legend()
+    ax4.grid(True, alpha=0.3, axis='y')
+    
+    # 标注压缩率
+    for i, (u, t) in enumerate(zip(unique_tokens, total_tokens)):
+        ratio = t / 13  # 原始字符数
+        ax4.text(i, t + 0.5, f'压缩率\n{ratio:.1f}x', ha='center', fontsize=9)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🔧 传统分词方法总结：")
+    print("1. 空格分词：适用于英文等有明确分隔的语言")
+    print("2. 字符分词：通用但损失语义信息")
+    print("3. 词典分词：依赖词典质量，有OOV问题")
+    print("4. 统计分词：需要大量标注数据")
+
+传统分词方法对比()
+```
+
+#### 🎯 子词算法：现代分词的主流
+
+```python
+class BPETokenizer:
+    """Byte Pair Encoding (BPE) 分词器实现"""
+    
+    def __init__(self, vocab_size=1000):
+        self.vocab_size = vocab_size
+        self.word_freq = defaultdict(int)
+        self.vocab = {}
+        
+    def train(self, texts):
+        """训练BPE模型"""
+        # 1. 统计词频
+        for text in texts:
+            words = text.split()
+            for word in words:
+                # 添加结束符，避免歧义
+                word = ' '.join(list(word)) + ' </w>'
+                self.word_freq[word] += 1
+        
+        # 2. 初始化词汇表（所有字符）
+        self.vocab = self._get_base_vocab()
+        
+        # 3. 迭代合并最频繁的相邻对
+        num_merges = self.vocab_size - len(self.vocab)
+        
+        merges = []
+        for i in range(num_merges):
+            pairs = self._get_pairs()
+            if not pairs:
+                break
+                
+            # 找出最频繁的pair
+            most_frequent = max(pairs, key=pairs.get)
+            merges.append(most_frequent)
+            
+            # 合并
+            self._merge_pair(most_frequent)
+            
+            # 更新词汇表
+            new_token = ''.join(most_frequent)
+            self.vocab[new_token] = len(self.vocab)
+            
+            if (i + 1) % 100 == 0:
+                print(f"完成 {i+1} 次合并")
+        
+        return merges
+    
+    def _get_base_vocab(self):
+        """获取基础词汇表（所有字符）"""
+        vocab = {}
+        for word, freq in self.word_freq.items():
+            for char in word.split():
+                if char not in vocab:
+                    vocab[char] = len(vocab)
+        return vocab
+    
+    def _get_pairs(self):
+        """统计所有相邻对的频率"""
+        pairs = defaultdict(int)
+        
+        for word, freq in self.word_freq.items():
+            symbols = word.split()
+            for i in range(len(symbols) - 1):
+                pair = (symbols[i], symbols[i + 1])
+                pairs[pair] += freq
+                
+        return pairs
+    
+    def _merge_pair(self, pair):
+        """合并指定的pair"""
+        new_word_freq = {}
+        bigram = ' '.join(pair)
+        replacement = ''.join(pair)
+        
+        for word, freq in self.word_freq.items():
+            new_word = word.replace(bigram, replacement)
+            new_word_freq[new_word] = freq
+            
+        self.word_freq = new_word_freq
+
+def BPE算法演示():
+    """演示BPE算法的工作原理"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. BPE算法步骤
+    ax1.set_title('BPE算法：迭代合并最频繁的字符对', fontsize=14, weight='bold')
+    ax1.axis('off')
+    
+    # 初始状态
+    initial_words = {
+        'l o w </w>': 5,
+        'l o w e r </w>': 2,
+        'n e w e s t </w>': 6,
+        'w i d e s t </w>': 3
+    }
+    
+    ax1.text(0.1, 0.9, '初始状态（字符级）：', transform=ax1.transAxes,
+            fontsize=12, weight='bold')
+    
+    y_pos = 0.8
+    for word, freq in list(initial_words.items())[:4]:
+        ax1.text(0.1, y_pos, f'{word}', transform=ax1.transAxes,
+                fontsize=10, family='monospace',
+                bbox=dict(boxstyle="round", facecolor='lightblue'))
+        ax1.text(0.5, y_pos, f'频率: {freq}', transform=ax1.transAxes,
+                fontsize=10)
+        y_pos -= 0.1
+    
+    # 合并过程
+    merges = [
+        ('e s', 'es', 9),
+        ('es t', 'est', 9),
+        ('l o', 'lo', 7),
+        ('lo w', 'low', 7),
+    ]
+    
+    ax1.text(0.1, 0.35, '合并过程：', transform=ax1.transAxes,
+            fontsize=12, weight='bold')
+    
+    y_pos = 0.25
+    for i, (pair, merged, freq) in enumerate(merges[:3]):
+        ax1.text(0.1, y_pos, f'{i+1}. {pair} → {merged} (频率:{freq})',
+                transform=ax1.transAxes, fontsize=10,
+                bbox=dict(boxstyle="round", facecolor='lightgreen'))
+        y_pos -= 0.08
+    
+    # 2. 词汇表增长
+    ax2.set_title('词汇表的增长过程', fontsize=14, weight='bold')
+    
+    # 模拟词汇表增长
+    iterations = np.arange(0, 1000, 50)
+    vocab_sizes = 256 + iterations  # 基础字符 + 合并的子词
+    
+    ax2.plot(iterations, vocab_sizes, 'b-', linewidth=2)
+    ax2.fill_between(iterations, 256, vocab_sizes, alpha=0.3, color='lightblue')
+    
+    ax2.axhline(y=256, color='red', linestyle='--', label='基础字符')
+    ax2.text(500, 270, '基础字符（256）', ha='center', fontsize=10)
+    
+    ax2.set_xlabel('合并次数')
+    ax2.set_ylabel('词汇表大小')
+    ax2.grid(True, alpha=0.3)
+    
+    # 标注不同阶段
+    stages = [(100, '常见二元组'), (400, '常见词根'), (800, '常见单词')]
+    for x, stage in stages:
+        ax2.annotate(stage, xy=(x, 256+x), xytext=(x, 256+x+100),
+                    arrowprops=dict(arrowstyle='->', color='gray'),
+                    fontsize=9, ha='center')
+    
+    # 3. 分词示例
+    ax3.set_title('BPE分词效果展示', fontsize=14, weight='bold')
+    ax3.axis('off')
+    
+    # 分词示例
+    examples = [
+        ('unhappiness', ['un', 'happ', 'iness'], '识别词缀'),
+        ('chatbot', ['chat', 'bot'], '识别复合词'),
+        ('GPT-4', ['G', 'PT', '-', '4'], '处理特殊词'),
+        ('今天天气', ['今', '天', '天', '气'], '中文字符')
+    ]
+    
+    y_pos = 0.85
+    for word, tokens, note in examples:
+        ax3.text(0.1, y_pos, word, transform=ax3.transAxes,
+                fontsize=11, weight='bold')
+        ax3.text(0.3, y_pos, '→', transform=ax3.transAxes, fontsize=11)
+        
+        # 绘制token
+        x_pos = 0.35
+        for token in tokens:
+            ax3.text(x_pos, y_pos, token, transform=ax3.transAxes,
+                    fontsize=10, bbox=dict(boxstyle="round", 
+                    facecolor='lightgreen' if len(token) > 1 else 'lightblue'))
+            x_pos += 0.1
+        
+        ax3.text(0.75, y_pos, note, transform=ax3.transAxes,
+                fontsize=9, style='italic', color='gray')
+        y_pos -= 0.15
+    
+    # 4. 与其他方法对比
+    ax4.set_title('不同分词方法的对比', fontsize=14, weight='bold')
+    
+    methods = ['字符级', 'BPE', 'WordPiece', '词级']
+    
+    # 评分（满分5）
+    vocab_size_score = [5, 4, 4, 1]  # 词汇表大小（越小越好）
+    oov_handling = [5, 4, 4, 1]      # OOV处理能力
+    semantic_score = [1, 3, 3, 5]    # 语义保持
+    efficiency = [2, 4, 4, 3]        # 计算效率
+    
+    # 雷达图
+    angles = np.linspace(0, 2*np.pi, 4, endpoint=False).tolist()
+    angles += angles[:1]  # 闭合
+    
+    ax4 = plt.subplot(224, projection='polar')
+    
+    # 绘制每种方法
+    colors = ['blue', 'green', 'orange', 'red']
+    for i, method in enumerate(methods):
+        values = [vocab_size_score[i], oov_handling[i], 
+                 semantic_score[i], efficiency[i]]
+        values += values[:1]  # 闭合
+        
+        ax4.plot(angles, values, 'o-', linewidth=2, 
+                label=method, color=colors[i])
+        ax4.fill(angles, values, alpha=0.15, color=colors[i])
+    
+    ax4.set_xticks(angles[:-1])
+    ax4.set_xticklabels(['词表大小', 'OOV处理', '语义保持', '效率'])
+    ax4.set_ylim(0, 5)
+    ax4.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
+    ax4.grid(True)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🎯 BPE算法总结：")
+    print("1. 数据驱动：从数据中学习最优分词")
+    print("2. 平衡性好：在词汇表大小和表达能力间取得平衡")
+    print("3. 处理OOV：可以分解未见过的词")
+    print("4. 语言无关：适用于各种语言")
+
+BPE算法演示()
+```
+
+#### 🔥 现代分词器：从WordPiece到SentencePiece
+
+```python
+def 现代分词器对比():
+    """对比现代主流分词器"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. WordPiece算法
+    ax1.set_title('WordPiece：BERT的选择', fontsize=14, weight='bold')
+    ax1.axis('off')
+    
+    # WordPiece特点
+    ax1.text(0.5, 0.9, 'WordPiece vs BPE', transform=ax1.transAxes,
+            fontsize=12, weight='bold', ha='center')
+    
+    # 对比表格
+    comparison = [
+        ['特性', 'BPE', 'WordPiece'],
+        ['合并准则', '频率最高', '互信息最大'],
+        ['词汇标记', '空格/</w>', '##前缀'],
+        ['分词方向', '从前往后', '最大似然'],
+        ['代表模型', 'GPT/RoBERTa', 'BERT/ELECTRA']
+    ]
+    
+    # 绘制表格
+    cell_height = 0.12
+    cell_width = 0.3
+    
+    for i, row in enumerate(comparison):
+        for j, cell in enumerate(row):
+            x = 0.2 + j * cell_width
+            y = 0.7 - i * cell_height
+            
+            if i == 0:
+                color = 'lightgray'
+                weight = 'bold'
+            elif j == 0:
+                color = 'lightblue'
+                weight = 'bold'
+            else:
+                color = 'white'
+                weight = 'normal'
+            
+            rect = patches.Rectangle((x-cell_width/2, y-cell_height/2), 
+                                   cell_width, cell_height,
+                                   facecolor=color, edgecolor='black',
+                                   transform=ax1.transAxes)
+            ax1.add_patch(rect)
+            ax1.text(x, y, cell, transform=ax1.transAxes,
+                    ha='center', va='center', fontsize=9, weight=weight)
+    
+    # WordPiece示例
+    ax1.text(0.5, 0.15, '示例："unhappiness" → ["un", "##happy", "##ness"]',
+            transform=ax1.transAxes, ha='center', fontsize=10,
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 2. SentencePiece
+    ax2.set_title('SentencePiece：真正的端到端', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    # 特点列表
+    features = [
+        ('1️⃣', '语言无关', '不需要预分词，直接处理原始文本'),
+        ('2️⃣', '可逆分词', '可以完美还原原始文本'),
+        ('3️⃣', '统一处理', '空格也作为特殊字符处理'),
+        ('4️⃣', '多种算法', '支持BPE和Unigram语言模型')
+    ]
+    
+    y_pos = 0.85
+    for emoji, feature, desc in features:
+        ax2.text(0.1, y_pos, emoji, transform=ax2.transAxes,
+                fontsize=16)
+        ax2.text(0.2, y_pos, feature, transform=ax2.transAxes,
+                fontsize=11, weight='bold')
+        ax2.text(0.35, y_pos-0.03, desc, transform=ax2.transAxes,
+                fontsize=9, style='italic', color='gray')
+        y_pos -= 0.18
+    
+    # 可逆性示例
+    ax2.text(0.5, 0.15, '可逆性示例：\n"Hello world" → ["▁Hello", "▁world"] → "Hello world"',
+            transform=ax2.transAxes, ha='center', fontsize=10,
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    
+    # 3. 不同模型的分词器选择
+    ax3.set_title('主流模型的分词器选择', fontsize=14, weight='bold')
+    
+    models = ['GPT-2', 'BERT', 'T5', 'LLaMA', 'ChatGPT']
+    tokenizers = ['BPE', 'WordPiece', 'SentencePiece', 'SentencePiece', 'BPE']
+    vocab_sizes = [50257, 30522, 32128, 32000, 100000]
+    colors = ['lightblue', 'lightgreen', 'lightcoral', 'lightyellow', 'lightpink']
+    
+    y_pos = np.arange(len(models))
+    bars = ax3.barh(y_pos, np.array(vocab_sizes)/1000, color=colors, edgecolor='black')
+    
+    ax3.set_yticks(y_pos)
+    ax3.set_yticklabels(models)
+    ax3.set_xlabel('词汇表大小 (K)')
+    
+    # 标注分词器类型
+    for i, (bar, tokenizer) in enumerate(zip(bars, tokenizers)):
+        width = bar.get_width()
+        ax3.text(width + 1, bar.get_y() + bar.get_height()/2,
+                tokenizer, va='center', fontsize=9)
+    
+    ax3.grid(True, alpha=0.3, axis='x')
+    
+    # 4. 多语言处理能力
+    ax4.set_title('多语言处理能力对比', fontsize=14, weight='bold')
+    
+    # 测试句子
+    test_sentences = {
+        '英语': 'Hello world',
+        '中文': '你好世界',
+        '日语': 'こんにちは',
+        '韩语': '안녕하세요',
+        '阿拉伯语': 'مرحبا',
+        '表情': '😀🎉'
+    }
+    
+    # 不同分词器的处理结果（简化展示）
+    results = {
+        '字符级': [2, 4, 5, 5, 5, 2],
+        'BPE': [2, 4, 3, 4, 4, 2],
+        'SentencePiece': [2, 2, 2, 2, 3, 1]
+    }
+    
+    languages = list(test_sentences.keys())
+    x = np.arange(len(languages))
+    width = 0.25
+    
+    for i, (method, tokens) in enumerate(results.items()):
+        ax4.bar(x + i*width, tokens, width, label=method)
+    
+    ax4.set_xlabel('语言')
+    ax4.set_ylabel('Token数量')
+    ax4.set_xticks(x + width)
+    ax4.set_xticklabels(languages, rotation=15)
+    ax4.legend()
+    ax4.grid(True, alpha=0.3, axis='y')
+    
+    # 添加说明
+    ax4.text(0.5, 0.95, 'Token数越少，压缩效率越高',
+            transform=ax4.transAxes, ha='center', fontsize=9,
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🔥 现代分词器特点：")
+    print("1. WordPiece：BERT系列的标配，使用##标记")
+    print("2. SentencePiece：端到端处理，支持多语言")
+    print("3. 趋势：更大的词汇表，更好的多语言支持")
+    print("4. 选择：根据模型架构和应用场景选择")
+
+现代分词器对比()
+```
+
+#### 💻 实战：实现一个简单的BPE分词器
+
+```python
+class SimpleBPE:
+    """简化版的BPE实现"""
+    
+    def __init__(self):
+        self.vocab = {}
+        self.merges = []
+        
+    def train_from_text(self, text, num_merges=100):
+        """从文本训练BPE"""
+        # 1. 初始化：将文本分割成字符
+        word_freq = Counter(text.split())
+        
+        # 将每个词分割成字符
+        splits = {}
+        for word, freq in word_freq.items():
+            splits[' '.join(list(word) + ['</w>'])] = freq
+        
+        # 2. 学习合并规则
+        for i in range(num_merges):
+            pairs = self._count_pairs(splits)
+            if not pairs:
+                break
+                
+            # 找到最频繁的pair
+            best_pair = max(pairs, key=pairs.get)
+            self.merges.append(best_pair)
+            
+            # 执行合并
+            splits = self._merge_pair(splits, best_pair)
+            
+            if (i + 1) % 10 == 0:
+                print(f"Merge {i+1}: {best_pair} (freq: {pairs[best_pair]})")
+        
+        # 3. 构建词汇表
+        for word in splits:
+            for subword in word.split():
+                if subword not in self.vocab:
+                    self.vocab[subword] = len(self.vocab)
+        
+        return self
+    
+    def _count_pairs(self, splits):
+        """统计所有相邻字符对的频率"""
+        pairs = Counter()
+        
+        for word, freq in splits.items():
+            symbols = word.split()
+            for i in range(len(symbols) - 1):
+                pairs[(symbols[i], symbols[i+1])] += freq
+                
+        return pairs
+    
+    def _merge_pair(self, splits, pair):
+        """合并指定的字符对"""
+        new_splits = {}
+        bigram = ' '.join(pair)
+        replacement = ''.join(pair)
+        
+        for word, freq in splits.items():
+            new_word = word.replace(bigram, replacement)
+            new_splits[new_word] = freq
+            
+        return new_splits
+    
+    def tokenize(self, text):
+        """使用学习的规则分词"""
+        words = text.split()
+        tokens = []
+        
+        for word in words:
+            # 初始化为字符序列
+            word_tokens = list(word) + ['</w>']
+            
+            # 应用合并规则
+            for pair in self.merges:
+                i = 0
+                while i < len(word_tokens) - 1:
+                    if (word_tokens[i], word_tokens[i+1]) == pair:
+                        word_tokens = word_tokens[:i] + [''.join(pair)] + word_tokens[i+2:]
+                    else:
+                        i += 1
+            
+            tokens.extend(word_tokens)
+            
+        return tokens
+
+def BPE实战演示():
+    """演示BPE的实际使用"""
+    
+    # 准备训练文本
+    training_text = """
+    machine learning is amazing
+    deep learning is more amazing
+    natural language processing is interesting
+    machine translation is useful
+    learning algorithms are important
+    """
+    
+    # 训练BPE
+    print("🚀 开始训练BPE模型...")
+    bpe = SimpleBPE()
+    bpe.train_from_text(training_text, num_merges=20)
+    
+    print(f"\n📊 词汇表大小: {len(bpe.vocab)}")
+    print(f"📝 部分词汇: {list(bpe.vocab.keys())[:20]}")
+    
+    # 测试分词
+    test_sentences = [
+        "machine learning",
+        "deep thinking",  # 包含OOV词
+        "learning is fun"
+    ]
+    
+    print("\n🔍 分词测试:")
+    for sent in test_sentences:
+        tokens = bpe.tokenize(sent)
+        print(f"'{sent}' → {tokens}")
+    
+    # 可视化合并过程
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # 1. 显示前10个合并
+    ax1.set_title('BPE学习的合并规则（前10个）', fontsize=14, weight='bold')
+    ax1.axis('off')
+    
+    y_pos = 0.9
+    for i, (a, b) in enumerate(bpe.merges[:10]):
+        merged = a + b
+        ax1.text(0.1, y_pos, f"{i+1}.", transform=ax1.transAxes, fontsize=11)
+        ax1.text(0.2, y_pos, f"'{a}' + '{b}'", transform=ax1.transAxes,
+                fontsize=10, family='monospace',
+                bbox=dict(boxstyle="round", facecolor='lightblue'))
+        ax1.text(0.5, y_pos, "→", transform=ax1.transAxes, fontsize=11)
+        ax1.text(0.55, y_pos, f"'{merged}'", transform=ax1.transAxes,
+                fontsize=10, family='monospace',
+                bbox=dict(boxstyle="round", facecolor='lightgreen'))
+        y_pos -= 0.09
+    
+    # 2. 分词效果可视化
+    ax2.set_title('分词效果展示', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    # 展示一个句子的分词过程
+    sentence = "learning"
+    
+    # 初始状态
+    initial = list(sentence) + ['</w>']
+    ax2.text(0.5, 0.8, '初始状态:', transform=ax2.transAxes,
+            ha='center', fontsize=11, weight='bold')
+    
+    x_start = 0.3
+    for i, char in enumerate(initial):
+        ax2.text(x_start + i*0.05, 0.7, char, transform=ax2.transAxes,
+                fontsize=10, family='monospace',
+                bbox=dict(boxstyle="round", facecolor='lightcoral'))
+    
+    # 应用合并后
+    final_tokens = bpe.tokenize(sentence)
+    ax2.text(0.5, 0.4, '合并后:', transform=ax2.transAxes,
+            ha='center', fontsize=11, weight='bold')
+    
+    x_start = 0.35 - len(final_tokens)*0.025
+    for i, token in enumerate(final_tokens):
+        color = 'lightgreen' if len(token) > 1 else 'lightblue'
+        ax2.text(x_start + i*0.1, 0.3, token, transform=ax2.transAxes,
+                fontsize=10, family='monospace',
+                bbox=dict(boxstyle="round", facecolor=color))
+    
+    # 说明
+    ax2.text(0.5, 0.1, '绿色=合并的子词，蓝色=单字符',
+            transform=ax2.transAxes, ha='center', fontsize=9,
+            style='italic', color='gray')
+    
+    plt.tight_layout()
+    plt.show()
+
+BPE实战演示()
+```
+
+#### 🎓 本章小结
+
+Tokenization看似简单，实则是NLP的基础中的基础：
+
+1. **核心挑战**：
+   - 平衡词汇表大小和表达能力
+   - 处理未见过的词（OOV）
+   - 适应不同语言的特点
+   - 保持语义信息
+
+2. **技术演进**：
+   - 基于规则 → 基于统计 → 基于学习
+   - 词级 → 字符级 → 子词级
+   - 语言相关 → 语言无关
+
+3. **现代方案**：
+   - BPE：数据驱动的子词学习
+   - WordPiece：BERT的选择
+   - SentencePiece：真正的端到端
+
+4. **实用建议**：
+   - 英文：BPE或WordPiece都不错
+   - 中文：字符级或SentencePiece
+   - 多语言：SentencePiece是首选
+   - 词汇表大小：通常32K-100K
+
+#### 💡 经验分享
+
+1. **选择分词器时考虑**：
+   - 目标语言的特点
+   - 下游任务的需求
+   - 模型大小的限制
+   - 训练数据的规模
+
+2. **常见陷阱**：
+   - 训练和推理使用不同的分词器
+   - 忽视特殊字符的处理
+   - 词汇表过大导致模型臃肿
+   - 没有处理好OOV问题
+
+3. **优化技巧**：
+   - 预先计算常用词的分词结果
+   - 使用并行化加速分词
+   - 针对特定领域定制词汇表
+
+#### 🤔 思考题
+
+1. 为什么说子词分词是"恰到好处"的粒度？
+2. 如果让你设计一个表情符号的分词器，你会怎么做？
+3. 未来的分词技术可能会朝什么方向发展？
+
+恭喜你理解了Tokenization！下一章，我们将深入探讨词嵌入技术，看看如何让每个token都有了"灵魂"。
+
+### 第14章：词嵌入——让词语有了灵魂
+
+#### 🎯 本章导读
+
+还记得小时候学英语吗？老师说cat是猫，dog是狗。但cat和dog之间有什么关系？它们都是动物，都是宠物，都有四条腿...
+
+在计算机看来，"cat"只是[0,0,1,0,0,...]这样的编码，"dog"是[0,0,0,1,0,...]。它们之间毫无关系。
+
+这就是词嵌入（Word Embedding）要解决的问题：**让计算机理解词与词之间的关系**。
+
+从此，每个词不再是冰冷的编号，而是有了"位置"、"方向"和"距离"——就像词语有了灵魂。
+
+#### 🎭 从One-hot到分布式表示
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+import matplotlib.patches as mpatches
+from mpl_toolkits.mplot3d import Axes3D
+
+def one_hot的问题():
+    """展示One-hot编码的局限性"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. One-hot编码示例
+    ax1.set_title('One-hot编码：稀疏且无语义', fontsize=14, weight='bold')
+    
+    words = ['猫', '狗', '汽车', '飞机', '苹果']
+    vocab_size = len(words)
+    
+    # 创建one-hot矩阵
+    one_hot_matrix = np.eye(vocab_size)
+    
+    # 可视化
+    im = ax1.imshow(one_hot_matrix, cmap='Blues', aspect='auto')
+    ax1.set_xticks(range(vocab_size))
+    ax1.set_xticklabels(words)
+    ax1.set_yticks(range(vocab_size))
+    ax1.set_yticklabels(words)
+    ax1.set_xlabel('词汇表')
+    ax1.set_ylabel('One-hot向量')
+    
+    # 添加数值
+    for i in range(vocab_size):
+        for j in range(vocab_size):
+            text = ax1.text(j, i, f'{int(one_hot_matrix[i, j])}',
+                           ha="center", va="center", color="black" if one_hot_matrix[i, j] == 0 else "white")
+    
+    # 2. 语义关系缺失
+    ax2.set_title('One-hot的问题：词之间没有关系', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    # 计算余弦相似度
+    similarity_results = []
+    pairs = [('猫', '狗'), ('猫', '汽车'), ('汽车', '飞机')]
+    
+    y_pos = 0.8
+    for w1, w2 in pairs:
+        idx1, idx2 = words.index(w1), words.index(w2)
+        vec1, vec2 = one_hot_matrix[idx1], one_hot_matrix[idx2]
+        
+        # 余弦相似度
+        similarity = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+        
+        ax2.text(0.2, y_pos, f'{w1} vs {w2}:', transform=ax2.transAxes, fontsize=12)
+        ax2.text(0.5, y_pos, f'相似度 = {similarity:.1f}', transform=ax2.transAxes,
+                fontsize=12, bbox=dict(boxstyle="round", facecolor='lightcoral'))
+        
+        # 期望的关系
+        if w1 == '猫' and w2 == '狗':
+            expected = "应该相似（都是动物）"
+        elif w1 == '汽车' and w2 == '飞机':
+            expected = "应该相似（都是交通工具）"
+        else:
+            expected = "应该不相似"
+            
+        ax2.text(0.7, y_pos, expected, transform=ax2.transAxes,
+                fontsize=10, style='italic', color='gray')
+        y_pos -= 0.2
+    
+    ax2.text(0.5, 0.15, '所有词的相似度都是0！😱', transform=ax2.transAxes,
+            ha='center', fontsize=14, color='red', weight='bold',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 3. 维度诅咒
+    ax3.set_title('维度诅咒：词汇表有多大，向量就有多长', fontsize=14, weight='bold')
+    
+    vocab_sizes = [100, 1000, 10000, 50000, 100000]
+    memory_mb = [size * size * 4 / 1024 / 1024 for size in vocab_sizes]  # float32
+    
+    ax3.semilogy(vocab_sizes, memory_mb, 'ro-', markersize=10, linewidth=2)
+    ax3.set_xlabel('词汇表大小')
+    ax3.set_ylabel('存储空间 (MB)')
+    ax3.grid(True, alpha=0.3)
+    
+    # 标注
+    for i, (size, mem) in enumerate(zip(vocab_sizes, memory_mb)):
+        if mem < 1000:
+            label = f'{mem:.1f}MB'
+        else:
+            label = f'{mem/1024:.1f}GB'
+        ax3.annotate(label, xy=(size, mem), xytext=(10, 10),
+                    textcoords='offset points', fontsize=9)
+    
+    ax3.text(0.5, 0.95, '仅存储词向量矩阵！', transform=ax3.transAxes,
+            ha='center', fontsize=10, color='red',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 4. 分布式表示的优势
+    ax4.set_title('分布式表示：低维稠密有语义', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    # 对比表格
+    comparison = [
+        ['特性', 'One-hot', '词嵌入'],
+        ['维度', '词汇表大小', '通常50-300'],
+        ['稀疏性', '极度稀疏', '稠密'],
+        ['语义', '无', '有'],
+        ['相似度', '全是0', '有意义'],
+        ['存储', 'O(V²)', 'O(V×d)'],
+    ]
+    
+    # 绘制表格
+    cell_height = 0.12
+    cell_width = 0.3
+    
+    for i, row in enumerate(comparison):
+        for j, cell in enumerate(row):
+            x = 0.2 + j * cell_width
+            y = 0.8 - i * cell_height
+            
+            if i == 0:
+                color = 'lightgray'
+                weight = 'bold'
+            elif j == 0:
+                color = 'lightblue'
+                weight = 'bold'
+            elif j == 1:
+                color = 'lightcoral' if i > 1 else 'white'
+            else:
+                color = 'lightgreen' if i > 1 else 'white'
+                
+            weight = weight if i == 0 or j == 0 else 'normal'
+            
+            rect = mpatches.Rectangle((x-cell_width/2, y-cell_height/2), 
+                                    cell_width, cell_height,
+                                    facecolor=color, edgecolor='black',
+                                    transform=ax4.transAxes)
+            ax4.add_patch(rect)
+            ax4.text(x, y, cell, transform=ax4.transAxes,
+                    ha='center', va='center', fontsize=10, weight=weight)
+    
+    ax4.text(0.5, 0.1, 'V=词汇表大小，d=嵌入维度',
+            transform=ax4.transAxes, ha='center', fontsize=9,
+            style='italic', color='gray')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("📊 One-hot编码的致命缺陷：")
+    print("1. 维度爆炸：词汇表多大，向量就多长")
+    print("2. 极度稀疏：只有一个1，其余都是0")
+    print("3. 语义缺失：无法表达词之间的关系")
+    print("4. 计算低效：大量无用的0参与计算")
+
+one_hot的问题()
+```
+
+#### 🎲 Word2Vec：词嵌入的革命
+
+```python
+class Word2VecDemo:
+    """Word2Vec算法演示"""
+    
+    def __init__(self):
+        # 模拟的词嵌入
+        self.word_vectors = {
+            # 动物
+            '猫': np.array([0.8, 0.6, 0.1]),
+            '狗': np.array([0.7, 0.7, 0.1]),
+            '老虎': np.array([0.9, 0.5, 0.2]),
+            '狮子': np.array([0.85, 0.55, 0.15]),
+            
+            # 水果
+            '苹果': np.array([-0.6, 0.8, 0.3]),
+            '香蕉': np.array([-0.7, 0.7, 0.4]),
+            '橙子': np.array([-0.65, 0.75, 0.35]),
+            
+            # 动作
+            '吃': np.array([0.1, -0.8, 0.5]),
+            '睡': np.array([0.2, -0.7, 0.6]),
+            '跑': np.array([0.15, -0.85, 0.4]),
+            
+            # 地点
+            '北京': np.array([0.3, 0.2, -0.8]),
+            '上海': np.array([0.4, 0.3, -0.7]),
+            '中国': np.array([0.35, 0.25, -0.9]),
+            '美国': np.array([0.2, 0.4, -0.85]),
+        }
+    
+    def cosine_similarity(self, word1, word2):
+        """计算余弦相似度"""
+        vec1 = self.word_vectors[word1]
+        vec2 = self.word_vectors[word2]
+        return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+    
+    def find_nearest(self, word, n=3):
+        """找到最相似的词"""
+        if word not in self.word_vectors:
+            return []
+        
+        similarities = []
+        for w in self.word_vectors:
+            if w != word:
+                sim = self.cosine_similarity(word, w)
+                similarities.append((w, sim))
+        
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        return similarities[:n]
+    
+    def analogy(self, a, b, c):
+        """词类比：a之于b，如同c之于？"""
+        if a not in self.word_vectors or b not in self.word_vectors or c not in self.word_vectors:
+            return None
+        
+        # 计算 b - a + c
+        result_vec = self.word_vectors[b] - self.word_vectors[a] + self.word_vectors[c]
+        
+        # 找到最接近的词
+        best_word = None
+        best_sim = -1
+        
+        for word, vec in self.word_vectors.items():
+            if word not in [a, b, c]:
+                sim = np.dot(result_vec, vec) / (np.linalg.norm(result_vec) * np.linalg.norm(vec))
+                if sim > best_sim:
+                    best_sim = sim
+                    best_word = word
+        
+        return best_word
+
+def word2vec算法原理():
+    """展示Word2Vec的两种算法"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. CBOW模型
+    ax1.set_title('CBOW：用上下文预测中心词', fontsize=14, weight='bold')
+    ax1.set_xlim(0, 10)
+    ax1.set_ylim(0, 10)
+    ax1.axis('off')
+    
+    # 输入句子
+    sentence = "我 喜欢 吃 苹果 和 香蕉"
+    words = sentence.split()
+    center_idx = 3  # "苹果"
+    window_size = 2
+    
+    # 绘制上下文窗口
+    y_pos = 8
+    for i, word in enumerate(words):
+        if abs(i - center_idx) <= window_size and i != center_idx:
+            color = 'lightblue'
+            box_style = 'round'
+        elif i == center_idx:
+            color = 'lightcoral'
+            box_style = 'round,pad=0.3'
+        else:
+            color = 'lightgray'
+            box_style = 'round'
+        
+        x_pos = 1 + i * 1.3
+        ax1.text(x_pos, y_pos, word, ha='center', va='center',
+                bbox=dict(boxstyle=box_style, facecolor=color),
+                fontsize=11)
+    
+    # 绘制CBOW结构
+    # 输入层
+    context_words = ['喜欢', '吃', '和', '香蕉']
+    for i, word in enumerate(context_words):
+        y = 5.5 - i * 0.8
+        ax1.text(2, y, word, ha='center', va='center',
+                bbox=dict(boxstyle="round", facecolor='lightblue'),
+                fontsize=10)
+        ax1.arrow(2.5, y, 1.5, 0, head_width=0.1, head_length=0.1,
+                 fc='gray', ec='gray', alpha=0.5)
+    
+    # 隐藏层
+    ax1.text(5, 4, '平均', ha='center', va='center',
+            bbox=dict(boxstyle="circle,pad=0.3", facecolor='lightyellow'),
+            fontsize=10, weight='bold')
+    
+    # 输出层
+    ax1.arrow(5.5, 4, 1.5, 0, head_width=0.1, head_length=0.1,
+             fc='gray', ec='gray', alpha=0.5)
+    ax1.text(8, 4, '苹果', ha='center', va='center',
+            bbox=dict(boxstyle="round", facecolor='lightcoral'),
+            fontsize=11, weight='bold')
+    
+    ax1.text(5, 1.5, 'CBOW：Continuous Bag of Words',
+            ha='center', fontsize=10, style='italic')
+    
+    # 2. Skip-gram模型
+    ax2.set_title('Skip-gram：用中心词预测上下文', fontsize=14, weight='bold')
+    ax2.set_xlim(0, 10)
+    ax2.set_ylim(0, 10)
+    ax2.axis('off')
+    
+    # 同样的句子
+    y_pos = 8
+    for i, word in enumerate(words):
+        if abs(i - center_idx) <= window_size and i != center_idx:
+            color = 'lightgreen'
+            box_style = 'round'
+        elif i == center_idx:
+            color = 'lightcoral'
+            box_style = 'round,pad=0.3'
+        else:
+            color = 'lightgray'
+            box_style = 'round'
+        
+        x_pos = 1 + i * 1.3
+        ax2.text(x_pos, y_pos, word, ha='center', va='center',
+                bbox=dict(boxstyle=box_style, facecolor=color),
+                fontsize=11)
+    
+    # 绘制Skip-gram结构
+    # 输入层
+    ax2.text(2, 4, '苹果', ha='center', va='center',
+            bbox=dict(boxstyle="round", facecolor='lightcoral'),
+            fontsize=11, weight='bold')
+    
+    # 隐藏层
+    ax2.arrow(2.5, 4, 2, 0, head_width=0.1, head_length=0.1,
+             fc='gray', ec='gray', alpha=0.5)
+    ax2.text(5, 4, '嵌入', ha='center', va='center',
+            bbox=dict(boxstyle="circle,pad=0.3", facecolor='lightyellow'),
+            fontsize=10, weight='bold')
+    
+    # 输出层
+    output_words = ['喜欢', '吃', '和', '香蕉']
+    for i, word in enumerate(output_words):
+        y = 5.5 - i * 0.8
+        ax2.arrow(5.5, 4, 2, y-4, head_width=0.1, head_length=0.1,
+                 fc='gray', ec='gray', alpha=0.5)
+        ax2.text(8, y, word, ha='center', va='center',
+                bbox=dict(boxstyle="round", facecolor='lightgreen'),
+                fontsize=10)
+    
+    ax2.text(5, 1.5, 'Skip-gram：跳过中心词预测周围',
+            ha='center', fontsize=10, style='italic')
+    
+    # 3. 训练过程可视化
+    ax3.set_title('训练过程：梯度下降优化', fontsize=14, weight='bold')
+    
+    # 模拟训练损失
+    epochs = np.arange(0, 100, 1)
+    loss_cbow = 5 * np.exp(-epochs/20) + 0.5 + 0.1 * np.random.randn(100)
+    loss_skipgram = 5.5 * np.exp(-epochs/25) + 0.4 + 0.1 * np.random.randn(100)
+    
+    ax3.plot(epochs, loss_cbow, 'b-', label='CBOW', linewidth=2, alpha=0.8)
+    ax3.plot(epochs, loss_skipgram, 'r-', label='Skip-gram', linewidth=2, alpha=0.8)
+    
+    ax3.set_xlabel('训练轮次')
+    ax3.set_ylabel('损失值')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    ax3.text(0.6, 0.8, 'CBOW：训练快，适合大数据',
+            transform=ax3.transAxes, fontsize=9,
+            bbox=dict(boxstyle="round", facecolor='lightblue', alpha=0.5))
+    ax3.text(0.6, 0.7, 'Skip-gram：效果好，适合小数据',
+            transform=ax3.transAxes, fontsize=9,
+            bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.5))
+    
+    # 4. 负采样优化
+    ax4.set_title('负采样：让训练更高效', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    # 展示负采样
+    ax4.text(0.5, 0.9, '原始Softmax问题', transform=ax4.transAxes,
+            ha='center', fontsize=12, weight='bold')
+    
+    ax4.text(0.5, 0.8, '需要计算所有词的概率：O(V)', transform=ax4.transAxes,
+            ha='center', fontsize=10,
+            bbox=dict(boxstyle="round", facecolor='lightcoral'))
+    
+    ax4.text(0.5, 0.65, '↓', transform=ax4.transAxes,
+            ha='center', fontsize=20)
+    
+    ax4.text(0.5, 0.5, '负采样解决方案', transform=ax4.transAxes,
+            ha='center', fontsize=12, weight='bold')
+    
+    # 正负样本示例
+    ax4.text(0.2, 0.35, '正样本：', transform=ax4.transAxes, fontsize=10)
+    ax4.text(0.35, 0.35, '(苹果, 吃)', transform=ax4.transAxes,
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightgreen'))
+    
+    ax4.text(0.2, 0.25, '负样本：', transform=ax4.transAxes, fontsize=10)
+    negative_samples = ['(苹果, 跑)', '(苹果, 北京)', '(苹果, 睡)']
+    x_pos = 0.35
+    for sample in negative_samples:
+        ax4.text(x_pos, 0.25, sample, transform=ax4.transAxes,
+                fontsize=9, bbox=dict(boxstyle="round", facecolor='lightgray'))
+        x_pos += 0.15
+    
+    ax4.text(0.5, 0.1, '只需要计算K+1个样本：O(K) << O(V)',
+            transform=ax4.transAxes, ha='center', fontsize=10,
+            bbox=dict(boxstyle="round", facecolor='lightgreen'))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🎲 Word2Vec的核心思想：")
+    print("1. 分布假说：相似的词出现在相似的上下文中")
+    print("2. CBOW：快速，适合大规模语料")
+    print("3. Skip-gram：准确，适合小规模语料")
+    print("4. 负采样：将Softmax简化为二分类")
+
+word2vec算法原理()
+```
+
+#### 🌟 词嵌入的神奇性质
+
+```python
+def 词嵌入性质演示():
+    """展示词嵌入的各种性质"""
+    
+    fig = plt.figure(figsize=(16, 12))
+    
+    # 创建Word2Vec演示对象
+    w2v = Word2VecDemo()
+    
+    # 1. 3D词向量空间
+    ax1 = fig.add_subplot(221, projection='3d')
+    ax1.set_title('词向量的3D空间分布', fontsize=14, weight='bold')
+    
+    # 绘制所有词向量
+    categories = {
+        '动物': ['猫', '狗', '老虎', '狮子'],
+        '水果': ['苹果', '香蕉', '橙子'],
+        '动作': ['吃', '睡', '跑'],
+        '地点': ['北京', '上海', '中国', '美国']
+    }
+    
+    colors = {'动物': 'red', '水果': 'green', '动作': 'blue', '地点': 'orange'}
+    
+    for category, words in categories.items():
+        for word in words:
+            vec = w2v.word_vectors[word]
+            ax1.scatter(vec[0], vec[1], vec[2], c=colors[category], 
+                       s=100, alpha=0.6, edgecolors='black')
+            ax1.text(vec[0], vec[1], vec[2], word, fontsize=9)
+    
+    # 添加图例
+    handles = [mpatches.Patch(color=color, label=cat) 
+              for cat, color in colors.items()]
+    ax1.legend(handles=handles)
+    
+    ax1.set_xlabel('X')
+    ax1.set_ylabel('Y')
+    ax1.set_zlabel('Z')
+    
+    # 2. 相似度热力图
+    ax2 = fig.add_subplot(222)
+    ax2.set_title('词之间的相似度热力图', fontsize=14, weight='bold')
+    
+    # 选择一些词
+    selected_words = ['猫', '狗', '苹果', '香蕉', '吃', '北京']
+    n_words = len(selected_words)
+    
+    # 计算相似度矩阵
+    similarity_matrix = np.zeros((n_words, n_words))
+    for i, w1 in enumerate(selected_words):
+        for j, w2 in enumerate(selected_words):
+            if i == j:
+                similarity_matrix[i, j] = 1.0
+            else:
+                similarity_matrix[i, j] = w2v.cosine_similarity(w1, w2)
+    
+    # 绘制热力图
+    im = ax2.imshow(similarity_matrix, cmap='RdYlBu_r', aspect='auto', vmin=-1, vmax=1)
+    ax2.set_xticks(range(n_words))
+    ax2.set_xticklabels(selected_words, rotation=45)
+    ax2.set_yticks(range(n_words))
+    ax2.set_yticklabels(selected_words)
+    
+    # 添加数值
+    for i in range(n_words):
+        for j in range(n_words):
+            text = ax2.text(j, i, f'{similarity_matrix[i, j]:.2f}',
+                           ha="center", va="center", fontsize=9)
+    
+    plt.colorbar(im, ax=ax2)
+    
+    # 3. 词类比关系
+    ax3 = fig.add_subplot(223)
+    ax3.set_title('词类比：向量运算的魔法', fontsize=14, weight='bold')
+    ax3.axis('off')
+    
+    # 类比示例
+    analogies = [
+        ('猫', '狗', '苹果', '?'),
+        ('北京', '中国', '上海', '?'),
+        ('吃', '苹果', '睡', '?')
+    ]
+    
+    y_pos = 0.9
+    for a, b, c, _ in analogies:
+        result = w2v.analogy(a, b, c)
+        
+        # 显示类比
+        ax3.text(0.1, y_pos, f'{a} : {b} = {c} : ?', 
+                transform=ax3.transAxes, fontsize=12)
+        
+        # 向量运算
+        ax3.text(0.5, y_pos, f'{b} - {a} + {c} =', 
+                transform=ax3.transAxes, fontsize=10, style='italic')
+        
+        # 结果
+        ax3.text(0.75, y_pos, result if result else '无', 
+                transform=ax3.transAxes, fontsize=12,
+                bbox=dict(boxstyle="round", facecolor='lightgreen'))
+        
+        y_pos -= 0.25
+    
+    ax3.text(0.5, 0.1, '词嵌入保留了语义关系！',
+            transform=ax3.transAxes, ha='center', fontsize=12,
+            color='red', weight='bold')
+    
+    # 4. 最近邻展示
+    ax4 = fig.add_subplot(224)
+    ax4.set_title('找到语义相似的词', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    # 查询词
+    query_words = ['猫', '苹果', '吃', '北京']
+    
+    y_pos = 0.9
+    for query in query_words:
+        neighbors = w2v.find_nearest(query, n=3)
+        
+        ax4.text(0.1, y_pos, f'{query}:', 
+                transform=ax4.transAxes, fontsize=12, weight='bold')
+        
+        x_pos = 0.25
+        for word, sim in neighbors:
+            ax4.text(x_pos, y_pos, f'{word}\n({sim:.2f})', 
+                    transform=ax4.transAxes, fontsize=10,
+                    bbox=dict(boxstyle="round", facecolor='lightblue'),
+                    ha='center')
+            x_pos += 0.15
+        
+        y_pos -= 0.2
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🌟 词嵌入的神奇性质：")
+    print("1. 语义聚类：相似的词聚集在一起")
+    print("2. 线性关系：king - man + woman ≈ queen")
+    print("3. 距离有意义：余弦相似度反映语义相似性")
+    print("4. 可计算性：支持各种向量运算")
+
+词嵌入性质演示()
+```
+
+#### 🔧 其他词嵌入方法
+
+```python
+def 其他词嵌入方法():
+    """介绍GloVe、FastText等方法"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. GloVe原理
+    ax1.set_title('GloVe：全局向量表示', fontsize=14, weight='bold')
+    ax1.axis('off')
+    
+    # GloVe的核心思想
+    ax1.text(0.5, 0.9, 'GloVe = Global Vectors', 
+            transform=ax1.transAxes, ha='center', fontsize=12, weight='bold')
+    
+    ax1.text(0.5, 0.75, '核心思想：结合全局统计信息', 
+            transform=ax1.transAxes, ha='center', fontsize=11,
+            bbox=dict(boxstyle="round", facecolor='lightblue'))
+    
+    # 共现矩阵示例
+    ax1.text(0.1, 0.6, '共现矩阵X：', transform=ax1.transAxes, fontsize=10)
+    
+    # 简化的共现矩阵
+    cooc_matrix = np.array([
+        [0, 10, 2, 8],
+        [10, 0, 5, 2],
+        [2, 5, 0, 3],
+        [8, 2, 3, 0]
+    ])
+    words = ['猫', '狗', '吃', '睡']
+    
+    # 绘制矩阵
+    for i in range(4):
+        for j in range(4):
+            x = 0.3 + j * 0.1
+            y = 0.5 - i * 0.08
+            color = 'white' if cooc_matrix[i, j] == 0 else 'lightgreen'
+            ax1.text(x, y, str(cooc_matrix[i, j]), 
+                    transform=ax1.transAxes, ha='center', va='center',
+                    bbox=dict(boxstyle="square", facecolor=color, pad=0.3),
+                    fontsize=9)
+    
+    # 标签
+    for i, word in enumerate(words):
+        ax1.text(0.25, 0.5 - i * 0.08, word, 
+                transform=ax1.transAxes, ha='right', fontsize=9)
+        ax1.text(0.3 + i * 0.1, 0.58, word, 
+                transform=ax1.transAxes, ha='center', fontsize=9)
+    
+    # 目标函数
+    ax1.text(0.5, 0.2, r'J = Σ f(Xij)(wi·wj - log Xij)²',
+            transform=ax1.transAxes, ha='center', fontsize=11,
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    ax1.text(0.5, 0.05, 'Word2Vec关注局部，GloVe关注全局',
+            transform=ax1.transAxes, ha='center', fontsize=10,
+            style='italic', color='gray')
+    
+    # 2. FastText
+    ax2.set_title('FastText：子词级别的嵌入', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    # FastText特点
+    ax2.text(0.5, 0.85, 'FastText = Fast + Text', 
+            transform=ax2.transAxes, ha='center', fontsize=12, weight='bold')
+    
+    # 子词分解示例
+    word = "unhappiness"
+    subwords = ['<un', 'unh', 'nha', 'hap', 'app', 'ppi', 'pin', 'ine', 'nes', 'ess', 'ss>']
+    
+    ax2.text(0.1, 0.7, f'词：{word}', transform=ax2.transAxes, fontsize=11)
+    ax2.text(0.1, 0.6, '3-gram子词：', transform=ax2.transAxes, fontsize=10)
+    
+    # 显示子词
+    x_pos = 0.1
+    y_pos = 0.5
+    for i, subword in enumerate(subwords):
+        if i > 0 and i % 4 == 0:
+            x_pos = 0.1
+            y_pos -= 0.08
+        
+        ax2.text(x_pos, y_pos, subword, transform=ax2.transAxes,
+                fontsize=9, bbox=dict(boxstyle="round", facecolor='lightgreen'))
+        x_pos += 0.12
+    
+    # 优势
+    ax2.text(0.5, 0.25, '优势：', transform=ax2.transAxes, 
+            ha='center', fontsize=11, weight='bold')
+    
+    advantages = [
+        '✓ 处理OOV词：通过子词组合',
+        '✓ 形态学信息：前缀、后缀',
+        '✓ 拼写相似：typo容错'
+    ]
+    
+    y_pos = 0.15
+    for adv in advantages:
+        ax2.text(0.5, y_pos, adv, transform=ax2.transAxes,
+                ha='center', fontsize=10)
+        y_pos -= 0.05
+    
+    # 3. 方法对比
+    ax3.set_title('不同词嵌入方法对比', fontsize=14, weight='bold')
+    
+    methods = ['Word2Vec', 'GloVe', 'FastText', 'BERT*']
+    
+    # 各项指标评分（满分5）
+    speed = [4, 3, 4, 1]
+    oov_handling = [1, 1, 5, 3]
+    context = [3, 3, 3, 5]
+    multilingual = [2, 2, 4, 5]
+    
+    x = np.arange(len(methods))
+    width = 0.2
+    
+    ax3.bar(x - 1.5*width, speed, width, label='训练速度', color='lightblue')
+    ax3.bar(x - 0.5*width, oov_handling, width, label='OOV处理', color='lightgreen')
+    ax3.bar(x + 0.5*width, context, width, label='上下文理解', color='lightcoral')
+    ax3.bar(x + 1.5*width, multilingual, width, label='多语言', color='lightyellow')
+    
+    ax3.set_xlabel('方法')
+    ax3.set_ylabel('评分')
+    ax3.set_xticks(x)
+    ax3.set_xticklabels(methods)
+    ax3.legend()
+    ax3.grid(True, alpha=0.3, axis='y')
+    
+    ax3.text(0.5, 0.95, '*BERT是上下文相关的词嵌入',
+            transform=ax3.transAxes, ha='center', fontsize=9,
+            style='italic', color='gray')
+    
+    # 4. 评估方法
+    ax4.set_title('词嵌入质量评估', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    # 评估任务
+    tasks = [
+        ('词相似度', 'SimLex-999', '人工标注的词对相似度'),
+        ('词类比', 'Google Analogy', 'A:B = C:D类比任务'),
+        ('下游任务', 'NER/情感分析', '在具体任务上的表现'),
+    ]
+    
+    y_pos = 0.8
+    for task, dataset, desc in tasks:
+        # 任务名
+        ax4.text(0.1, y_pos, task, transform=ax4.transAxes,
+                fontsize=11, weight='bold')
+        
+        # 数据集
+        ax4.text(0.3, y_pos, dataset, transform=ax4.transAxes,
+                fontsize=10, bbox=dict(boxstyle="round", facecolor='lightblue'))
+        
+        # 描述
+        ax4.text(0.5, y_pos, desc, transform=ax4.transAxes,
+                fontsize=9, style='italic', color='gray')
+        
+        y_pos -= 0.2
+    
+    # 示例评分
+    ax4.text(0.5, 0.15, '典型评分：Word2Vec(70%) < GloVe(75%) < FastText(78%)',
+            transform=ax4.transAxes, ha='center', fontsize=10,
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🔧 各种词嵌入方法总结：")
+    print("1. Word2Vec：开创性工作，简单高效")
+    print("2. GloVe：结合全局统计，性能稳定")
+    print("3. FastText：子词建模，处理OOV")
+    print("4. 趋势：从静态到动态，从词级到子词级")
+
+其他词嵌入方法()
+```
+
+#### 💻 实战：训练自己的词嵌入
+
+```python
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+class SimpleWord2Vec(nn.Module):
+    """简化的Word2Vec实现（Skip-gram）"""
+    
+    def __init__(self, vocab_size, embedding_dim):
+        super(SimpleWord2Vec, self).__init__()
+        
+        # 输入嵌入层（中心词）
+        self.in_embed = nn.Embedding(vocab_size, embedding_dim)
+        # 输出嵌入层（上下文词）
+        self.out_embed = nn.Embedding(vocab_size, embedding_dim)
+        
+        # 初始化
+        self.in_embed.weight.data.uniform_(-0.1, 0.1)
+        self.out_embed.weight.data.uniform_(-0.1, 0.1)
+    
+    def forward(self, center_words, context_words, negative_words):
+        """
+        center_words: 中心词索引 [batch_size]
+        context_words: 正样本（上下文词）索引 [batch_size]
+        negative_words: 负样本索引 [batch_size, n_negative]
+        """
+        batch_size = center_words.size(0)
+        
+        # 获取嵌入
+        center_embeds = self.in_embed(center_words)  # [batch_size, embedding_dim]
+        context_embeds = self.out_embed(context_words)  # [batch_size, embedding_dim]
+        neg_embeds = self.out_embed(negative_words)  # [batch_size, n_negative, embedding_dim]
+        
+        # 正样本得分
+        pos_score = torch.sum(center_embeds * context_embeds, dim=1)  # [batch_size]
+        pos_score = torch.sigmoid(pos_score)
+        
+        # 负样本得分
+        neg_score = torch.bmm(neg_embeds, center_embeds.unsqueeze(2)).squeeze()  # [batch_size, n_negative]
+        neg_score = torch.sigmoid(-neg_score)
+        
+        # 计算损失
+        pos_loss = -torch.log(pos_score).mean()
+        neg_loss = -torch.log(neg_score).mean()
+        
+        return pos_loss + neg_loss
+    
+    def get_embedding(self, word_idx):
+        """获取词嵌入"""
+        return self.in_embed.weight[word_idx].detach().numpy()
+
+def 训练词嵌入演示():
+    """演示训练过程"""
+    
+    # 准备数据
+    sentences = [
+        "我 喜欢 吃 苹果",
+        "我 喜欢 吃 香蕉",
+        "猫 喜欢 吃 鱼",
+        "狗 喜欢 吃 肉",
+        "他 喜欢 学习 编程",
+        "她 喜欢 学习 英语"
+    ]
+    
+    # 构建词汇表
+    vocab = set()
+    for sent in sentences:
+        vocab.update(sent.split())
+    vocab = list(vocab)
+    word2idx = {word: idx for idx, word in enumerate(vocab)}
+    idx2word = {idx: word for word, idx in word2idx.items()}
+    
+    print(f"词汇表大小: {len(vocab)}")
+    print(f"词汇表: {vocab[:10]}...")
+    
+    # 训练参数
+    vocab_size = len(vocab)
+    embedding_dim = 10
+    window_size = 2
+    n_negative = 3
+    
+    # 创建模型
+    model = SimpleWord2Vec(vocab_size, embedding_dim)
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    
+    # 生成训练样本
+    training_pairs = []
+    for sent in sentences:
+        words = sent.split()
+        indices = [word2idx[w] for w in words]
+        
+        for i, center_idx in enumerate(indices):
+            # 获取上下文词
+            for j in range(max(0, i-window_size), min(len(indices), i+window_size+1)):
+                if i != j:
+                    training_pairs.append((center_idx, indices[j]))
+    
+    print(f"\n训练样本数: {len(training_pairs)}")
+    
+    # 训练过程可视化
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # 1. 损失曲线
+    ax1.set_title('训练损失曲线', fontsize=14, weight='bold')
+    
+    losses = []
+    n_epochs = 50
+    
+    for epoch in range(n_epochs):
+        epoch_loss = 0
+        
+        for center, context in training_pairs:
+            # 准备数据
+            center_tensor = torch.tensor([center])
+            context_tensor = torch.tensor([context])
+            
+            # 随机负采样
+            negative_indices = []
+            while len(negative_indices) < n_negative:
+                neg_idx = np.random.randint(0, vocab_size)
+                if neg_idx != center and neg_idx != context:
+                    negative_indices.append(neg_idx)
+            negative_tensor = torch.tensor([negative_indices])
+            
+            # 前向传播
+            optimizer.zero_grad()
+            loss = model(center_tensor, context_tensor, negative_tensor)
+            
+            # 反向传播
+            loss.backward()
+            optimizer.step()
+            
+            epoch_loss += loss.item()
+        
+        avg_loss = epoch_loss / len(training_pairs)
+        losses.append(avg_loss)
+        
+        if (epoch + 1) % 10 == 0:
+            print(f"Epoch {epoch+1}/{n_epochs}, Loss: {avg_loss:.4f}")
+    
+    ax1.plot(losses, 'b-', linewidth=2)
+    ax1.set_xlabel('训练轮次')
+    ax1.set_ylabel('损失值')
+    ax1.grid(True, alpha=0.3)
+    
+    # 2. 学到的词嵌入可视化（2D投影）
+    ax2.set_title('学习到的词嵌入（2D投影）', fontsize=14, weight='bold')
+    
+    # 获取所有词嵌入
+    embeddings = []
+    words = []
+    for word, idx in word2idx.items():
+        embedding = model.get_embedding(idx)
+        embeddings.append(embedding)
+        words.append(word)
+    
+    embeddings = np.array(embeddings)
+    
+    # PCA降维到2D
+    pca = PCA(n_components=2)
+    embeddings_2d = pca.fit_transform(embeddings)
+    
+    # 绘制
+    ax2.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], alpha=0.6, s=100)
+    
+    for i, word in enumerate(words):
+        ax2.annotate(word, (embeddings_2d[i, 0], embeddings_2d[i, 1]),
+                    xytext=(5, 5), textcoords='offset points', fontsize=11)
+    
+    ax2.set_xlabel('PCA维度1')
+    ax2.set_ylabel('PCA维度2')
+    ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # 测试相似度
+    print("\n🔍 词相似度测试:")
+    test_words = ['我', '吃', '苹果']
+    
+    for test_word in test_words:
+        if test_word in word2idx:
+            test_idx = word2idx[test_word]
+            test_embedding = model.get_embedding(test_idx)
+            
+            # 计算与其他词的相似度
+            similarities = []
+            for word, idx in word2idx.items():
+                if word != test_word:
+                    other_embedding = model.get_embedding(idx)
+                    sim = np.dot(test_embedding, other_embedding) / (
+                        np.linalg.norm(test_embedding) * np.linalg.norm(other_embedding))
+                    similarities.append((word, sim))
+            
+            # 排序并显示前3个
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            print(f"\n'{test_word}'最相似的词:")
+            for word, sim in similarities[:3]:
+                print(f"  {word}: {sim:.3f}")
+
+训练词嵌入演示()
+```
+
+#### 🎓 本章小结
+
+词嵌入是深度学习在NLP领域的第一个杀手级应用：
+
+1. **核心创新**：
+   - 从离散到连续：one-hot → 稠密向量
+   - 从独立到相关：孤立的词 → 语义空间
+   - 从符号到计算：无法运算 → 向量运算
+
+2. **主要方法**：
+   - Word2Vec：CBOW和Skip-gram
+   - GloVe：结合全局统计信息
+   - FastText：引入子词信息
+   - 上下文相关：ELMo、BERT（后续章节）
+
+3. **关键性质**：
+   - 语义相似性：相似的词距离近
+   - 线性关系：支持类比推理
+   - 可组合性：短语的语义组合
+
+4. **实际应用**：
+   - 作为下游任务的输入特征
+   - 计算文本相似度
+   - 信息检索和推荐
+   - 跨语言映射
+
+#### 💡 实用建议
+
+1. **选择指南**：
+   - 通用场景：使用预训练的Word2Vec或GloVe
+   - 多语言/OOV多：使用FastText
+   - 特定领域：在领域语料上训练
+   - 追求效果：使用BERT等上下文模型
+
+2. **训练技巧**：
+   - 语料要足够大（至少百万词）
+   - 合理设置窗口大小（通常5-10）
+   - 使用负采样加速训练
+   - 适当的嵌入维度（50-300）
+
+3. **常见问题**：
+   - 词频不平衡：使用子采样
+   - OOV问题：使用FastText或字符级模型
+   - 多义词：考虑上下文相关模型
+
+#### 🤔 思考题
+
+1. 为什么说"词嵌入让NLP进入了深度学习时代"？
+2. Word2Vec的Skip-gram为什么比CBOW效果好？
+3. 如何评估词嵌入的质量？有哪些指标？
+4. 静态词嵌入的最大局限是什么？
+
+恭喜你掌握了词嵌入技术！下一章，我们将学习位置编码，看看如何让模型理解词的顺序。
+
+### 第15章：位置编码——让模型理解顺序
+
+#### 🎯 本章导读
+
+试着读这两个句子：
+
+1. "我爱你"
+2. "你爱我"
+
+同样的三个字，顺序一变，意思完全不同。但对计算机来说，如果只看词嵌入，这两句话是一样的！
+
+这就是位置编码（Position Encoding）要解决的问题：**让模型知道每个词在句子中的位置**。
+
+就像给每个演员发号码牌，让他们知道自己该站在舞台的什么位置。
+
+#### 📍 为什么需要位置信息？
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, FancyBboxPatch, Circle
+import matplotlib.patches as mpatches
+from mpl_toolkits.mplot3d import Axes3D
+
+def 为什么需要位置编码():
+    """展示位置信息的重要性"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. 词序改变意思
+    ax1.set_title('词序决定语义', fontsize=14, weight='bold')
+    ax1.set_xlim(0, 10)
+    ax1.set_ylim(0, 10)
+    ax1.axis('off')
+    
+    # 两个句子
+    sentences = [
+        ("狗咬人", ["狗", "咬", "人"]),
+        ("人咬狗", ["人", "咬", "狗"])
+    ]
+    
+    y_positions = [7, 4]
+    for (sent, words), y in zip(sentences, y_positions):
+        # 句子标题
+        ax1.text(1, y+1.5, sent, fontsize=12, weight='bold')
+        
+        # 画词
+        for i, word in enumerate(words):
+            x = 2 + i * 2
+            # 词框
+            rect = FancyBboxPatch((x-0.4, y-0.4), 0.8, 0.8,
+                                 boxstyle="round,pad=0.1",
+                                 facecolor='lightblue', edgecolor='black')
+            ax1.add_patch(rect)
+            ax1.text(x, y, word, ha='center', va='center', fontsize=11)
+            
+            # 位置标号
+            ax1.text(x, y-0.8, f'位置{i+1}', ha='center', fontsize=9, 
+                    color='gray', style='italic')
+    
+    # 说明
+    ax1.text(5, 1, '同样的词，不同的顺序，完全不同的意思！',
+            ha='center', fontsize=11, color='red', weight='bold',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 2. Transformer的问题
+    ax2.set_title('Transformer的"失忆症"', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    # Self-Attention示意
+    ax2.text(0.5, 0.9, 'Self-Attention计算', transform=ax2.transAxes,
+            ha='center', fontsize=12, weight='bold')
+    
+    # 输入序列
+    words = ["我", "爱", "学习", "AI"]
+    colors = ['lightcoral', 'lightgreen', 'lightblue', 'lightyellow']
+    
+    # 画输入
+    y_input = 0.7
+    for i, (word, color) in enumerate(zip(words, colors)):
+        x = 0.2 + i * 0.2
+        ax2.text(x, y_input, word, transform=ax2.transAxes,
+                ha='center', va='center', fontsize=10,
+                bbox=dict(boxstyle="round", facecolor=color))
+    
+    # 画Attention
+    ax2.text(0.5, 0.5, 'Attention\n(只看内容相似度)', 
+            transform=ax2.transAxes, ha='center', va='center',
+            fontsize=10, bbox=dict(boxstyle="round", facecolor='lightgray'))
+    
+    # 画输出
+    y_output = 0.3
+    ax2.text(0.5, y_output, '？？？', transform=ax2.transAxes,
+            ha='center', va='center', fontsize=12, color='red')
+    
+    # 问题说明
+    ax2.text(0.5, 0.1, 'Attention是排列不变的（Permutation Invariant）\n'
+                      '打乱输入顺序，输出完全一样！',
+            transform=ax2.transAxes, ha='center', fontsize=10,
+            color='red', bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 3. RNN vs Transformer
+    ax3.set_title('RNN vs Transformer：位置信息处理', fontsize=14, weight='bold')
+    ax3.axis('off')
+    
+    # RNN部分
+    ax3.text(0.25, 0.9, 'RNN', transform=ax3.transAxes,
+            ha='center', fontsize=12, weight='bold')
+    
+    # RNN序列处理
+    y_rnn = 0.7
+    for i in range(4):
+        x = 0.1 + i * 0.08
+        # 画状态
+        circle = Circle((x, y_rnn), 0.03, transform=ax3.transAxes,
+                      facecolor='lightblue', edgecolor='black')
+        ax3.add_patch(circle)
+        
+        if i < 3:
+            # 画箭头
+            ax3.arrow(x + 0.03, y_rnn, 0.04, 0, transform=ax3.transAxes,
+                     head_width=0.02, head_length=0.01, fc='gray', ec='gray')
+    
+    ax3.text(0.25, 0.55, '✓ 天然有序\n✗ 串行计算',
+            transform=ax3.transAxes, ha='center', fontsize=9,
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.5))
+    
+    # Transformer部分
+    ax3.text(0.75, 0.9, 'Transformer', transform=ax3.transAxes,
+            ha='center', fontsize=12, weight='bold')
+    
+    # Transformer并行处理
+    y_trans = 0.7
+    for i in range(4):
+        x = 0.6 + i * 0.08
+        rect = Rectangle((x-0.025, y_trans-0.025), 0.05, 0.05,
+                       transform=ax3.transAxes,
+                       facecolor='lightcoral', edgecolor='black')
+        ax3.add_patch(rect)
+    
+    # 双向箭头表示全连接
+    ax3.annotate('', xy=(0.85, y_trans), xytext=(0.6, y_trans),
+                transform=ax3.transAxes,
+                arrowprops=dict(arrowstyle='<->', color='gray'))
+    
+    ax3.text(0.75, 0.55, '✓ 并行计算\n✗ 无位置信息',
+            transform=ax3.transAxes, ha='center', fontsize=9,
+            bbox=dict(boxstyle="round", facecolor='lightcoral', alpha=0.5))
+    
+    # 解决方案
+    ax3.text(0.5, 0.3, '↓', transform=ax3.transAxes,
+            ha='center', fontsize=20)
+    ax3.text(0.5, 0.15, '位置编码：给Transformer装上"GPS"',
+            transform=ax3.transAxes, ha='center', fontsize=11,
+            weight='bold', bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 4. 位置编码的效果
+    ax4.set_title('加入位置编码后的效果', fontsize=14, weight='bold')
+    
+    # 模拟注意力权重矩阵
+    attention_no_pe = np.array([
+        [0.25, 0.25, 0.25, 0.25],
+        [0.25, 0.25, 0.25, 0.25],
+        [0.25, 0.25, 0.25, 0.25],
+        [0.25, 0.25, 0.25, 0.25]
+    ])
+    
+    attention_with_pe = np.array([
+        [0.4, 0.3, 0.2, 0.1],
+        [0.3, 0.4, 0.3, 0.0],
+        [0.2, 0.3, 0.4, 0.1],
+        [0.1, 0.0, 0.1, 0.8]
+    ])
+    
+    # 绘制两个注意力矩阵
+    im1 = ax4.imshow(attention_no_pe, cmap='Blues', aspect='auto',
+                     extent=[0, 4, 8, 4])
+    im2 = ax4.imshow(attention_with_pe, cmap='Reds', aspect='auto',
+                     extent=[5, 9, 8, 4])
+    
+    ax4.text(2, 3.5, '无位置编码', ha='center', fontsize=10, weight='bold')
+    ax4.text(7, 3.5, '有位置编码', ha='center', fontsize=10, weight='bold')
+    
+    ax4.text(2, 2.5, '(均匀分布)', ha='center', fontsize=9, style='italic')
+    ax4.text(7, 2.5, '(局部性模式)', ha='center', fontsize=9, style='italic')
+    
+    ax4.set_xlim(0, 9)
+    ax4.set_ylim(2, 9)
+    ax4.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("📍 位置编码的必要性：")
+    print("1. 语言是有序的：词序决定语义")
+    print("2. Transformer是无序的：需要额外的位置信息")
+    print("3. 位置编码：将位置信息注入到模型中")
+    print("4. 效果：让模型能够区分不同位置的相同词")
+
+为什么需要位置编码()
+```
+
+#### 🔢 绝对位置编码
+
+```python
+def 正弦位置编码():
+    """展示经典的正弦位置编码"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. 正弦编码公式
+    ax1.set_title('正弦位置编码公式', fontsize=14, weight='bold')
+    ax1.axis('off')
+    
+    # 公式展示
+    ax1.text(0.5, 0.8, 'PE(pos, 2i) = sin(pos / 10000^(2i/d))',
+            transform=ax1.transAxes, ha='center', fontsize=12,
+            bbox=dict(boxstyle="round", facecolor='lightblue'))
+    
+    ax1.text(0.5, 0.6, 'PE(pos, 2i+1) = cos(pos / 10000^(2i/d))',
+            transform=ax1.transAxes, ha='center', fontsize=12,
+            bbox=dict(boxstyle="round", facecolor='lightgreen'))
+    
+    # 参数说明
+    params = [
+        ('pos', '位置索引 (0, 1, 2, ...)'),
+        ('i', '维度索引'),
+        ('d', '模型维度 (如512)'),
+    ]
+    
+    y_pos = 0.4
+    for param, desc in params:
+        ax1.text(0.3, y_pos, f'{param}:', transform=ax1.transAxes,
+                fontsize=11, weight='bold')
+        ax1.text(0.4, y_pos, desc, transform=ax1.transAxes,
+                fontsize=10, style='italic')
+        y_pos -= 0.1
+    
+    # 2. 位置编码可视化
+    ax2.set_title('位置编码的"指纹"', fontsize=14, weight='bold')
+    
+    # 生成位置编码
+    max_len = 50
+    d_model = 128
+    
+    def get_positional_encoding(max_len, d_model):
+        pe = np.zeros((max_len, d_model))
+        position = np.arange(0, max_len).reshape(-1, 1)
+        
+        div_term = np.exp(np.arange(0, d_model, 2) * -(np.log(10000.0) / d_model))
+        
+        pe[:, 0::2] = np.sin(position * div_term)
+        pe[:, 1::2] = np.cos(position * div_term)
+        
+        return pe
+    
+    pe = get_positional_encoding(max_len, d_model)
+    
+    # 绘制热力图
+    im = ax2.imshow(pe.T, cmap='RdBu_r', aspect='auto')
+    ax2.set_xlabel('位置')
+    ax2.set_ylabel('编码维度')
+    ax2.set_xlim(0, 50)
+    
+    # 标注
+    ax2.text(25, -5, '每个位置都有独特的"指纹"', 
+            ha='center', fontsize=10, style='italic')
+    
+    plt.colorbar(im, ax=ax2)
+    
+    # 3. 不同维度的周期性
+    ax3.set_title('不同维度的波长', fontsize=14, weight='bold')
+    
+    positions = np.arange(0, 100)
+    
+    # 选择几个维度展示
+    dims = [0, 10, 20, 40]
+    colors = ['red', 'green', 'blue', 'orange']
+    
+    for dim, color in zip(dims, colors):
+        if dim % 2 == 0:
+            values = np.sin(positions / np.power(10000, dim / d_model))
+        else:
+            values = np.cos(positions / np.power(10000, (dim-1) / d_model))
+        
+        ax3.plot(positions, values, color=color, label=f'维度{dim}',
+                alpha=0.8, linewidth=2)
+    
+    ax3.set_xlabel('位置')
+    ax3.set_ylabel('编码值')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    ax3.text(0.5, 0.95, '低维度=高频，高维度=低频',
+            transform=ax3.transAxes, ha='center', fontsize=10,
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 4. 位置编码的性质
+    ax4.set_title('正弦编码的优良性质', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    # 性质列表
+    properties = [
+        ('1️⃣ 确定性', '相同位置总是得到相同编码'),
+        ('2️⃣ 唯一性', '不同位置的编码不同'),
+        ('3️⃣ 有界性', '编码值在[-1, 1]之间'),
+        ('4️⃣ 平滑性', '相邻位置的编码相似'),
+        ('5️⃣ 可扩展', '可以处理训练时未见过的长度')
+    ]
+    
+    y_pos = 0.85
+    for emoji, prop, desc in properties:
+        ax4.text(0.1, y_pos, emoji, transform=ax4.transAxes, fontsize=16)
+        ax4.text(0.2, y_pos, prop, transform=ax4.transAxes,
+                fontsize=11, weight='bold')
+        ax4.text(0.35, y_pos-0.02, desc, transform=ax4.transAxes,
+                fontsize=9, style='italic', color='gray')
+        y_pos -= 0.15
+    
+    # 相对位置性质
+    ax4.text(0.5, 0.15, '特殊性质：PE(pos+k) 可以表示为 PE(pos) 的线性变换',
+            transform=ax4.transAxes, ha='center', fontsize=10,
+            weight='bold', color='red',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🔢 正弦位置编码的设计智慧：")
+    print("1. 使用不同频率的正弦波编码不同维度")
+    print("2. 低维高频捕捉局部信息，高维低频捕捉全局信息")
+    print("3. 正弦函数的周期性使得相对位置计算成为可能")
+    print("4. 值域有界，不会dominate词嵌入")
+
+正弦位置编码()
+```
+
+#### 🔄 相对位置编码
+
+```python
+def 相对位置编码演示():
+    """展示相对位置编码的概念"""
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. 绝对 vs 相对
+    ax1.set_title('绝对位置 vs 相对位置', fontsize=14, weight='bold')
+    ax1.set_xlim(0, 10)
+    ax1.set_ylim(0, 10)
+    ax1.axis('off')
+    
+    # 绝对位置示例
+    words_abs = ["我", "爱", "学习", "AI"]
+    y_abs = 7
+    
+    ax1.text(5, 8.5, '绝对位置编码', ha='center', fontsize=12, weight='bold')
+    for i, word in enumerate(words_abs):
+        x = 1.5 + i * 2
+        # 词框
+        rect = FancyBboxPatch((x-0.4, y_abs-0.4), 0.8, 0.8,
+                             boxstyle="round,pad=0.1",
+                             facecolor='lightblue', edgecolor='black')
+        ax1.add_patch(rect)
+        ax1.text(x, y_abs, word, ha='center', va='center', fontsize=11)
+        # 绝对位置
+        ax1.text(x, y_abs-0.8, f'Pos={i}', ha='center', fontsize=9,
+                color='blue', weight='bold')
+    
+    # 相对位置示例
+    y_rel = 4
+    ax1.text(5, 5.5, '相对位置编码', ha='center', fontsize=12, weight='bold')
+    
+    # 画中心词
+    center_idx = 1  # "爱"
+    for i, word in enumerate(words_abs):
+        x = 1.5 + i * 2
+        if i == center_idx:
+            color = 'lightcoral'
+        else:
+            color = 'lightgreen'
+        
+        rect = FancyBboxPatch((x-0.4, y_rel-0.4), 0.8, 0.8,
+                             boxstyle="round,pad=0.1",
+                             facecolor=color, edgecolor='black')
+        ax1.add_patch(rect)
+        ax1.text(x, y_rel, word, ha='center', va='center', fontsize=11)
+        
+        # 相对位置
+        rel_pos = i - center_idx
+        ax1.text(x, y_rel-0.8, f'Rel={rel_pos:+d}', ha='center', fontsize=9,
+                color='green', weight='bold')
+    
+    # 说明
+    ax1.text(5, 1.5, '相对位置：只关心词与词之间的距离',
+            ha='center', fontsize=10, style='italic',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    # 2. 相对位置矩阵
+    ax2.set_title('相对位置矩阵', fontsize=14, weight='bold')
+    
+    # 生成相对位置矩阵
+    seq_len = 6
+    rel_pos_matrix = np.zeros((seq_len, seq_len))
+    
+    for i in range(seq_len):
+        for j in range(seq_len):
+            rel_pos_matrix[i, j] = j - i
+    
+    # 绘制
+    im = ax2.imshow(rel_pos_matrix, cmap='RdBu_r', vmin=-5, vmax=5)
+    
+    # 添加数值
+    for i in range(seq_len):
+        for j in range(seq_len):
+            text = ax2.text(j, i, f'{int(rel_pos_matrix[i, j]):+d}',
+                           ha="center", va="center", fontsize=10)
+    
+    ax2.set_xlabel('Token j')
+    ax2.set_ylabel('Token i')
+    ax2.set_title('相对位置 = j - i', fontsize=11)
+    
+    plt.colorbar(im, ax=ax2)
+    
+    # 3. 相对位置的优势
+    ax3.set_title('为什么使用相对位置？', fontsize=14, weight='bold')
+    ax3.axis('off')
+    
+    # 平移不变性示例
+    ax3.text(0.5, 0.9, '平移不变性', transform=ax3.transAxes,
+            ha='center', fontsize=12, weight='bold')
+    
+    # 两个句子
+    sent1 = ["狗", "追", "猫"]
+    sent2 = ["昨天", "狗", "追", "猫", "了"]
+    
+    y1, y2 = 0.7, 0.5
+    
+    # 第一个句子
+    ax3.text(0.1, y1, '句子1:', transform=ax3.transAxes, fontsize=10)
+    for i, word in enumerate(sent1):
+        x = 0.25 + i * 0.08
+        ax3.text(x, y1, word, transform=ax3.transAxes,
+                ha='center', fontsize=9,
+                bbox=dict(boxstyle="round", facecolor='lightblue'))
+    
+    # 第二个句子
+    ax3.text(0.1, y2, '句子2:', transform=ax3.transAxes, fontsize=10)
+    for i, word in enumerate(sent2):
+        x = 0.25 + i * 0.08
+        if word in sent1:
+            color = 'lightblue'
+        else:
+            color = 'lightgray'
+        ax3.text(x, y2, word, transform=ax3.transAxes,
+                ha='center', fontsize=9,
+                bbox=dict(boxstyle="round", facecolor=color))
+    
+    # 说明
+    ax3.text(0.5, 0.3, '"狗追猫"的相对位置关系保持不变！',
+            transform=ax3.transAxes, ha='center', fontsize=10,
+            color='green', weight='bold',
+            bbox=dict(boxstyle="round", facecolor='lightgreen', alpha=0.3))
+    
+    # 4. 不同的相对位置编码方法
+    ax4.set_title('相对位置编码的实现方式', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    methods = [
+        ('T5风格', '使用可学习的相对位置偏置', 'lightblue'),
+        ('ALiBi', '线性衰减的注意力偏置', 'lightgreen'),
+        ('RoPE', '旋转位置编码（复数域）', 'lightcoral'),
+        ('相对位置嵌入', '类似绝对位置但使用相对索引', 'lightyellow')
+    ]
+    
+    y_pos = 0.85
+    for method, desc, color in methods:
+        # 方法名
+        ax4.text(0.1, y_pos, method, transform=ax4.transAxes,
+                fontsize=11, weight='bold',
+                bbox=dict(boxstyle="round", facecolor=color))
+        
+        # 描述
+        ax4.text(0.3, y_pos, desc, transform=ax4.transAxes,
+                fontsize=10, style='italic')
+        
+        y_pos -= 0.18
+    
+    # 总结
+    ax4.text(0.5, 0.15, '相对位置编码已成为大模型的主流选择',
+            transform=ax4.transAxes, ha='center', fontsize=11,
+            color='red', weight='bold')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🔄 相对位置编码的优势：")
+    print("1. 平移不变性：关注的是词之间的相对关系")
+    print("2. 更好的泛化：可以处理任意长度的序列")
+    print("3. 更符合直觉：语言理解主要依赖局部关系")
+    print("4. 参数效率：相对位置的种类有限")
+
+相对位置编码演示()
+```
+
+#### 🌀 旋转位置编码（RoPE）
+
+```python
+def 旋转位置编码详解():
+    """详细解释RoPE的原理"""
+    
+    fig = plt.figure(figsize=(16, 12))
+    
+    # 1. 复数表示
+    ax1 = fig.add_subplot(221)
+    ax1.set_title('RoPE的核心：复数旋转', fontsize=14, weight='bold')
+    
+    # 画单位圆
+    theta = np.linspace(0, 2*np.pi, 100)
+    ax1.plot(np.cos(theta), np.sin(theta), 'k-', alpha=0.3)
+    
+    # 画向量旋转
+    angles = [0, np.pi/4, np.pi/2]
+    colors = ['red', 'green', 'blue']
+    labels = ['位置0', '位置1', '位置2']
+    
+    for angle, color, label in zip(angles, colors, labels):
+        x, y = np.cos(angle), np.sin(angle)
+        ax1.arrow(0, 0, x*0.8, y*0.8, head_width=0.05, head_length=0.05,
+                 fc=color, ec=color, linewidth=2)
+        ax1.text(x*1.1, y*1.1, label, ha='center', va='center',
+                color=color, fontsize=10, weight='bold')
+    
+    ax1.set_xlim(-1.5, 1.5)
+    ax1.set_ylim(-1.5, 1.5)
+    ax1.set_aspect('equal')
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlabel('实部')
+    ax1.set_ylabel('虚部')
+    
+    # 2. 旋转矩阵
+    ax2 = fig.add_subplot(222)
+    ax2.set_title('位置m的旋转矩阵', fontsize=14, weight='bold')
+    ax2.axis('off')
+    
+    # 显示旋转矩阵
+    ax2.text(0.5, 0.8, r'R_m = \begin{bmatrix} \cos(m\theta) & -\sin(m\theta) \\ \sin(m\theta) & \cos(m\theta) \end{bmatrix}',
+            transform=ax2.transAxes, ha='center', fontsize=14,
+            bbox=dict(boxstyle="round", facecolor='lightblue'))
+    
+    # 应用说明
+    ax2.text(0.5, 0.5, '将词嵌入的每两个维度作为一个复数',
+            transform=ax2.transAxes, ha='center', fontsize=11)
+    ax2.text(0.5, 0.4, '根据位置m旋转相应的角度mθ',
+            transform=ax2.transAxes, ha='center', fontsize=11)
+    
+    # 频率说明
+    ax2.text(0.5, 0.2, r'θ_i = 10000^{-2i/d}',
+            transform=ax2.transAxes, ha='center', fontsize=12,
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    ax2.text(0.5, 0.1, '不同维度对使用不同的旋转频率',
+            transform=ax2.transAxes, ha='center', fontsize=10,
+            style='italic', color='gray')
+    
+    # 3. RoPE的效果
+    ax3 = fig.add_subplot(223)
+    ax3.set_title('RoPE编码效果可视化', fontsize=14, weight='bold')
+    
+    # 生成RoPE编码
+    seq_len = 20
+    d_model = 64
+    
+    def rope_encoding(seq_len, d_model):
+        position = np.arange(seq_len).reshape(-1, 1)
+        dims = np.arange(0, d_model, 2)
+        
+        theta = 1.0 / np.power(10000, dims / d_model)
+        angles = position * theta
+        
+        # 创建旋转编码
+        rope = np.zeros((seq_len, d_model))
+        rope[:, 0::2] = np.cos(angles)
+        rope[:, 1::2] = np.sin(angles)
+        
+        return rope
+    
+    rope = rope_encoding(seq_len, d_model)
+    
+    # 绘制
+    im = ax3.imshow(rope.T, cmap='RdBu_r', aspect='auto')
+    ax3.set_xlabel('位置')
+    ax3.set_ylabel('维度')
+    ax3.set_title('每个位置的旋转模式', fontsize=11)
+    plt.colorbar(im, ax=ax3)
+    
+    # 4. 相对位置计算
+    ax4 = fig.add_subplot(224)
+    ax4.set_title('RoPE的相对位置性质', fontsize=14, weight='bold')
+    ax4.axis('off')
+    
+    # 展示相对位置计算
+    ax4.text(0.5, 0.85, '关键性质：内积只依赖相对位置', 
+            transform=ax4.transAxes, ha='center', fontsize=12, weight='bold')
+    
+    # 数学推导
+    ax4.text(0.5, 0.7, 'q_m · k_n = q · k · cos((m-n)θ)',
+            transform=ax4.transAxes, ha='center', fontsize=12,
+            bbox=dict(boxstyle="round", facecolor='lightgreen'))
+    
+    # 解释
+    explanations = [
+        'q_m = R_m · q （查询向量旋转m角度）',
+        'k_n = R_n · k （键向量旋转n角度）',
+        '内积结果只与(m-n)有关！'
+    ]
+    
+    y_pos = 0.5
+    for exp in explanations:
+        ax4.text(0.5, y_pos, exp, transform=ax4.transAxes,
+                ha='center', fontsize=10)
+        y_pos -= 0.1
+    
+    # 优势总结
+    ax4.text(0.5, 0.15, 'RoPE优势：高效、外推性好、无需额外参数',
+            transform=ax4.transAxes, ha='center', fontsize=11,
+            color='red', weight='bold',
+            bbox=dict(boxstyle="round", facecolor='lightyellow'))
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("🌀 RoPE的创新之处：")
+    print("1. 使用复数旋转编码位置信息")
+    print("2. 天然具有相对位置性质")
+    print("3. 可以外推到训练时未见过的长度")
+    print("4. 计算高效，易于实现")
+
+旋转位置编码详解()
+```
+
+#### 💻 实战：实现位置编码
+
+```python
+import torch
+import torch.nn as nn
+
+class PositionalEncoding(nn.Module):
+    """实现各种位置编码"""
+    
+    def __init__(self, d_model, max_len=5000, encoding_type='sinusoidal'):
+        super(PositionalEncoding, self).__init__()
+        self.d_model = d_model
+        self.encoding_type = encoding_type
+        
+        if encoding_type == 'sinusoidal':
+            # 正弦位置编码
+            pe = torch.zeros(max_len, d_model)
+            position = torch.arange(0, max_len).unsqueeze(1).float()
+            
+            div_term = torch.exp(torch.arange(0, d_model, 2).float() *
+                               -(torch.log(torch.tensor(10000.0)) / d_model))
+            
+            pe[:, 0::2] = torch.sin(position * div_term)
+            pe[:, 1::2] = torch.cos(position * div_term)
+            
+            self.register_buffer('pe', pe.unsqueeze(0))
+            
+        elif encoding_type == 'learnable':
+            # 可学习的位置编码
+            self.pe = nn.Parameter(torch.randn(1, max_len, d_model))
+    
+    def forward(self, x):
+        """
+        x: [batch_size, seq_len, d_model]
+        """
+        seq_len = x.size(1)
+        
+        if self.encoding_type == 'sinusoidal':
+            return x + self.pe[:, :seq_len, :]
+        elif self.encoding_type == 'learnable':
+            return x + self.pe[:, :seq_len, :]
+
+class RotaryPositionalEncoding(nn.Module):
+    """旋转位置编码（RoPE）的简化实现"""
+    
+    def __init__(self, d_model, max_len=5000):
+        super(RotaryPositionalEncoding, self).__init__()
+        self.d_model = d_model
+        
+        # 计算频率
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, d_model, 2).float() / d_model))
+        self.register_buffer('inv_freq', inv_freq)
+        
+        # 预计算cos和sin
+        position = torch.arange(0, max_len).float()
+        freqs = torch.einsum('i,j->ij', position, inv_freq)
+        
+        self.register_buffer('cos_cached', freqs.cos())
+        self.register_buffer('sin_cached', freqs.sin())
+    
+    def apply_rotary_pos_emb(self, x, cos, sin):
+        """应用旋转"""
+        # x: [batch_size, seq_len, d_model]
+        d_model = x.shape[-1]
+        
+        # 分成两半
+        x1 = x[..., :d_model//2]
+        x2 = x[..., d_model//2:]
+        
+        # 旋转
+        return torch.cat([
+            x1 * cos - x2 * sin,
+            x1 * sin + x2 * cos
+        ], dim=-1)
+    
+    def forward(self, x):
+        seq_len = x.size(1)
+        
+        cos = self.cos_cached[:seq_len].unsqueeze(0)  # [1, seq_len, d_model//2]
+        sin = self.sin_cached[:seq_len].unsqueeze(0)
+        
+        return self.apply_rotary_pos_emb(x, cos, sin)
+
+def 位置编码实战():
+    """演示不同位置编码的效果"""
+    
+    # 参数设置
+    batch_size = 2
+    seq_len = 10
+    d_model = 64
+    
+    # 创建输入
+    x = torch.randn(batch_size, seq_len, d_model)
+    
+    # 1. 测试正弦位置编码
+    print("🔢 正弦位置编码测试:")
+    sin_pe = PositionalEncoding(d_model, encoding_type='sinusoidal')
+    x_sin = sin_pe(x)
+    print(f"输入形状: {x.shape}")
+    print(f"输出形状: {x_sin.shape}")
+    print(f"位置编码范围: [{sin_pe.pe.min():.3f}, {sin_pe.pe.max():.3f}]")
+    
+    # 2. 测试可学习位置编码
+    print("\n📚 可学习位置编码测试:")
+    learn_pe = PositionalEncoding(d_model, encoding_type='learnable')
+    x_learn = learn_pe(x)
+    print(f"参数数量: {learn_pe.pe.numel()}")
+    print(f"参数形状: {learn_pe.pe.shape}")
+    
+    # 3. 测试RoPE
+    print("\n🌀 RoPE测试:")
+    rope = RotaryPositionalEncoding(d_model)
+    x_rope = rope(x)
+    print(f"输出形状: {x_rope.shape}")
+    
+    # 可视化对比
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+    
+    # 正弦编码
+    ax1.set_title('正弦位置编码', fontsize=14, weight='bold')
+    im1 = ax1.imshow(sin_pe.pe[0, :20, :32].numpy(), cmap='RdBu_r', aspect='auto')
+    ax1.set_xlabel('维度')
+    ax1.set_ylabel('位置')
+    plt.colorbar(im1, ax=ax1)
+    
+    # 可学习编码
+    ax2.set_title('可学习位置编码（随机初始化）', fontsize=14, weight='bold')
+    im2 = ax2.imshow(learn_pe.pe[0, :20, :32].detach().numpy(), 
+                     cmap='RdBu_r', aspect='auto')
+    ax2.set_xlabel('维度')
+    ax2.set_ylabel('位置')
+    plt.colorbar(im2, ax=ax2)
+    
+    # RoPE的cos部分
+    ax3.set_title('RoPE (cos部分)', fontsize=14, weight='bold')
+    im3 = ax3.imshow(rope.cos_cached[:20, :16].numpy(), 
+                     cmap='RdBu_r', aspect='auto')
+    ax3.set_xlabel('频率维度')
+    ax3.set_ylabel('位置')
+    plt.colorbar(im3, ax=ax3)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # 性能对比
+    print("\n⚡ 性能对比:")
+    import time
+    
+    # 正弦编码时间
+    start = time.time()
+    for _ in range(100):
+        _ = sin_pe(x)
+    sin_time = time.time() - start
+    
+    # RoPE时间
+    start = time.time()
+    for _ in range(100):
+        _ = rope(x)
+    rope_time = time.time() - start
+    
+    print(f"正弦编码: {sin_time:.4f}秒")
+    print(f"RoPE: {rope_time:.4f}秒")
+    print(f"速度比: {sin_time/rope_time:.2f}x")
+
+位置编码实战()
+```
+
+#### 🎓 本章小结
+
+位置编码是Transformer能够理解序列的关键：
+
+1. **为什么需要**：
+   - Self-Attention是排列不变的
+   - 语言的意义依赖于词序
+   - 需要显式注入位置信息
+
+2. **主要方法**：
+   - **绝对位置编码**：
+     - 正弦编码：经典、无参数、可外推
+     - 可学习编码：灵活但需要训练
+   - **相对位置编码**：
+     - T5风格：可学习的相对偏置
+     - ALiBi：线性衰减偏置
+     - RoPE：旋转编码，兼具效率和效果
+
+3. **发展趋势**：
+   - 从绝对到相对
+   - 从加法到乘法（旋转）
+   - 从固定到自适应
+
+4. **选择建议**：
+   - 短序列：正弦编码简单有效
+   - 长序列：RoPE或ALiBi
+   - 需要外推：避免可学习编码
+
+#### 💡 实用技巧
+
+1. **实现要点**：
+   - 位置编码应该与词嵌入同一量级
+   - 注意数值稳定性（避免过大的位置值）
+   - 考虑序列长度的外推需求
+
+2. **调试技巧**：
+   - 可视化位置编码矩阵
+   - 检查注意力模式是否合理
+   - 测试不同长度的泛化能力
+
+3. **常见问题**：
+   - 位置编码过大：会掩盖词嵌入信息
+   - 外推失败：训练和推理长度差异太大
+   - 相对位置溢出：需要截断或使用对数桶
+
+#### 🤔 思考题
+
+1. 为什么正弦位置编码要用不同的频率？
+2. RoPE为什么能够自然地编码相对位置？
+3. 如果序列很长（比如100k），该选择什么位置编码？
+4. 位置编码是否可以完全被注意力机制学习到？
+
+恭喜你掌握了位置编码！下一章，我们将深入注意力机制，看看Transformer的核心是如何工作的。
+
 --- 
