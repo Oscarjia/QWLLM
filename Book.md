@@ -1908,6 +1908,7 @@ emergence.概率的哲学()
 
 ```python
 # 实验：构建一个迷你语言模型
+import numpy as np
 class MiniLM:
     """一个极简的语言模型，帮助理解核心概念"""
     
